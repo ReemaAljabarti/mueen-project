@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.env
+*.db
+
+# Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# VS Code
+.vscode/
+
+# System
+.DS_Store
+Thumbs.db
