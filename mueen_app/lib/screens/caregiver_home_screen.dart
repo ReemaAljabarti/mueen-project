@@ -56,11 +56,11 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'معين',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
+        title: SizedBox(
+          height: 70,
+          child: Image.asset(
+            'assets/fonts/images/mueenicon.png',
+            fit: BoxFit.contain,
           ),
         ),
         centerTitle: false,
@@ -118,6 +118,8 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // بطاقة التنبيه العلوية
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -134,9 +136,9 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                     color: AppColors.warningText,
                   ),
                   const Spacer(),
-                  Text(
-                    'عدد كبار السن المضافين: ${elders.length}',
-                    style: const TextStyle(
+                  const Text(
+                    'الجرعات الفائتة اليوم: 3',
+                    style: TextStyle(
                       color: Colors.black,
                       fontSize: 16,
                     ),
@@ -153,7 +155,9 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 ],
               ),
             ),
+
             const SizedBox(height: 32),
+
             const Text(
               'كبار السن',
               textAlign: TextAlign.right,
@@ -163,6 +167,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
             if (isLoading)
               const Center(
                 child: Padding(
@@ -207,10 +212,16 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
             else
               Column(
                 children: elders
+                    .asMap()
+                    .entries
                     .map(
-                      (elder) => Padding(
+                      (entry) => Padding(
                         padding: const EdgeInsets.only(bottom: 16),
-                        child: _buildElderCard(context, elder),
+                        child: _buildElderCard(
+                          context,
+                          entry.value,
+                          hasMissedDose: entry.key == 0,
+                        ),
                       ),
                     )
                     .toList(),
@@ -241,18 +252,17 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     );
   }
 
-  Widget _buildElderCard(BuildContext context, Elder elder) {
+  Widget _buildElderCard(
+    BuildContext context,
+    Elder elder, {
+    bool hasMissedDose = false,
+  }) {
     final String displayName =
         elder.fullName.trim().isNotEmpty ? elder.fullName : 'بدون اسم';
 
-    final String displayPhone = elder.phoneNumber.trim().isNotEmpty
-        ? elder.phoneNumber
-        : 'لا يوجد رقم جوال';
-
-    final String displayAge =
-        (elder.age != null && elder.age!.trim().isNotEmpty)
-            ? '${elder.age} سنة'
-            : 'العمر غير محدد';
+    final String timeText = (elder.age != null && elder.age!.trim().isNotEmpty)
+        ? '${elder.age} سنة'
+        : 'العمر غير محدد';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -265,27 +275,37 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
         children: [
           Row(
             children: [
+              // النصوص
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Icon(
-                          Icons.chevron_left,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/elder-profile',
+                          arguments: elder,
+                        );
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const Icon(
+                            Icons.chevron_left,
+                            size: 16,
+                            color: Colors.grey,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const Text(
                       'اضغط على الاسم لعرض الملف',
@@ -296,24 +316,52 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      displayPhone,
+                      timeText,
                       style: const TextStyle(
                         color: Colors.grey,
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      displayAge,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
+                    if (hasMissedDose) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.warningText.withOpacity(0.2),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'جرعة فائتة',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 12,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 12,
+                              color: AppColors.warningText,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 16),
+
+              // الأيقونة
               Container(
                 width: 64,
                 height: 64,
@@ -331,19 +379,28 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
+
+          // الأزرار السفلية
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: const Text('محادثة'),
+                  onPressed: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/weekly-report',
+                      arguments: elder,
+                    );
+                  },
+                  icon: const Icon(Icons.show_chart_outlined, size: 18),
+                  label: const Text('عرض التقرير'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.black,
-                    side: BorderSide(color: Colors.grey.shade300),
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
@@ -353,18 +410,19 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                   onPressed: () {
                     Navigator.pushNamed(
                       context,
-                      '/elder-profile',
+                      '/caregiver-medications',
                       arguments: elder,
                     );
                   },
-                  icon: const Icon(Icons.person_outline, size: 18),
-                  label: const Text('الملف الشخصي'),
+                  icon: const Icon(Icons.medication_outlined, size: 18),
+                  label: const Text('عرض الأدوية'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),

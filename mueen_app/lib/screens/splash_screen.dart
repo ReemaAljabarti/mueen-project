@@ -1,6 +1,5 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
-import 'role_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,115 +13,113 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(seconds: 3));
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const RoleSelectionScreen(),
-        ),
-      );
+    Timer(const Duration(seconds: 2), () {
+      Navigator.pushReplacementNamed(context, '/role-selection');
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF3F8F9),
       body: Stack(
         children: [
+          // 🔵 الشكل السفلي
           Positioned(
-            top: -76,
-            right: -64,
+            bottom: -80,
+            left: -80,
             child: Container(
-              width: 256,
-              height: 256,
-              decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.5),
+              width: 220,
+              height: 220,
+              decoration: const BoxDecoration(
+                color: Color(0xFFBFD7ED),
                 shape: BoxShape.circle,
               ),
             ),
           ),
+
+          // 🟢 الشكل العلوي
           Positioned(
-            bottom: -75,
-            left: -75,
+            top: -80,
+            right: -80,
             child: Container(
-              width: 256,
-              height: 256,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1681FF).withOpacity(0.25),
+              width: 220,
+              height: 220,
+              decoration: const BoxDecoration(
+                color: Color(0xFFCDE7DB),
                 shape: BoxShape.circle,
               ),
             ),
           ),
+
+          // 🔥 المحتوى الرئيسي
           Center(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // 🔹 اللوجو (بدل الأيقونة)
                 Container(
-                  width: 171,
-                  height: 141,
+                  width: 160,
+                  height: 160,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 25,
-                        offset: const Offset(0, 20),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(40),
                   ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.medical_services,
-                      size: 64,
-                      color: AppColors.primary,
+                  child: Center(
+                    child: Image.asset(
+                      'assets/fonts/images/mueenicon.png',
+                      width: 110,
+                      height: 110,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+
+                const SizedBox(height: 24),
+
                 const Text(
-                  'Mu\'een',
+                  "Mu'een",
                   style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 36,
-                  ),
-                ),
-                const Text(
-                  'مُعين',
-                  style: TextStyle(
-                    color: AppColors.secondary,
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
+                    fontFamily: 'Tajawal',
+                    color: Color(0xFF2F3E46),
                   ),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 6),
+
                 const Text(
-                  'يساعدك في إدارة وتذكير الأدوية',
+                  "معين",
                   style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 20,
+                    fontSize: 18,
+                    color: Color(0xFF16B6C8),
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  "يساعدك في إدارة وتذكير الأدوية",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                const Text(
+                  "v1.0.0 (Beta)",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontFamily: 'Tajawal',
                   ),
                 ),
               ],
-            ),
-          ),
-          const Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Text(
-                'v1.0.0 (Beta)',
-                style: TextStyle(
-                  color: Color(0x33102A33),
-                  fontSize: 10,
-                ),
-              ),
             ),
           ),
         ],

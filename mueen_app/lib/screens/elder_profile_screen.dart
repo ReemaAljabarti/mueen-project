@@ -117,20 +117,34 @@ class ElderProfileScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: _buildActionButton(
-                    'عرض الأدوية',
-                    Icons.medication_outlined,
-                    AppColors.primary,
-                    Colors.white,
+                    label: 'عرض الأدوية',
+                    icon: Icons.medication_outlined,
+                    bgColor: AppColors.primary,
+                    textColor: Colors.white,
+                    onTap: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/caregiver-medications',
+                        arguments: elder,
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildActionButton(
-                    'عرض التقرير',
-                    Icons.show_chart_outlined,
-                    Colors.white,
-                    AppColors.primary,
+                    label: 'عرض التقرير',
+                    icon: Icons.show_chart_outlined,
+                    bgColor: Colors.white,
+                    textColor: AppColors.primary,
                     borderColor: AppColors.primary,
+                    onTap: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/weekly-report',
+                        arguments: elder,
+                      );
+                    },
                   ),
                 ),
               ],
@@ -280,41 +294,45 @@ class ElderProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(
-    String label,
-    IconData icon,
-    Color bgColor,
-    Color textColor, {
+  Widget _buildActionButton({
+    required String label,
+    required IconData icon,
+    required Color bgColor,
+    required Color textColor,
     Color? borderColor,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      height: 100,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: borderColor != null ? Border.all(color: borderColor) : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: textColor, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: textColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 100,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: borderColor != null ? Border.all(color: borderColor) : null,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: textColor, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

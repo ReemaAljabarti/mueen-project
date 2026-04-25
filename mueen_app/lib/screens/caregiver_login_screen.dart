@@ -111,10 +111,10 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
           children: [
             const SizedBox(height: 24),
             const Center(
-              child: Icon(
-                Icons.health_and_safety,
-                size: 64,
-                color: AppColors.primary,
+              child: Image(
+                image: AssetImage('assets/fonts/images/mueenicon.png'),
+                width: 200,
+                height: 200,
               ),
             ),
             const SizedBox(height: 24),
