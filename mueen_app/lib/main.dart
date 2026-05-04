@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'services/dose_alert_service.dart'; 
+
 
 import 'screens/splash_screen.dart';
 // Role
@@ -14,6 +17,8 @@ import 'screens/caregiver_settings_screen.dart';
 import 'screens/elder_login_screen.dart';
 import 'screens/elder_home_screen.dart';
 import 'screens/elder_settings_screen.dart';
+import 'screens/weekly_pill_box_screen.dart';
+import 'screens/elder_today_medications_screen.dart';
 
 // Add Elder Flow
 import 'screens/add_elder_basic_info_screen.dart';
@@ -28,6 +33,7 @@ import 'screens/caregiver_medications_screen.dart';
 import 'screens/weekly_report_screen.dart';
 import 'screens/edit_medication_screen.dart';
 import 'screens/medication_details_screen.dart';
+import 'screens/dose_alert_flow.dart'; // فوق مع imports
 
 // Add Medication Flow
 import 'screens/add_medication/add_medication_selection_screen.dart';
@@ -41,10 +47,26 @@ import 'screens/add_medication/scheduling_step1_screen.dart';
 import 'screens/add_medication/scheduling_step2_screen.dart';
 import 'screens/add_medication/scheduling_step3_screen.dart';
 
+
+/// مفتاح التنقل العالمي — يُستخدم من DoseAlertService لفتح شاشة التنبيه
+/// فوق أي شاشة حالية دون الحاجة إلى context.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // تسجيل navigatorKey في الخدمة
+  DoseAlertService.registerNavigatorKey(navigatorKey);
+
   runApp(const MueenApp());
 }
-
 class MueenApp extends StatelessWidget {
   const MueenApp({super.key});
 
@@ -52,7 +74,11 @@ class MueenApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+       // ── مفتاح التنقل العالمي ────────────────────────────────────────────
+      navigatorKey: navigatorKey,
+      
       initialRoute: '/splash',
+
       routes: {
         // =============================
         // Role
@@ -74,6 +100,9 @@ class MueenApp extends StatelessWidget {
         '/elder-login': (context) => const ElderLoginScreen(),
         '/elder-home': (context) => const ElderHomeScreen(),
         '/elder-settings': (context) => const ElderSettingsScreen(),
+        '/weekly-pill-box': (context) => const WeeklyPillBoxScreen(),
+        '/elder-today-schedule': (context) =>
+            const ElderTodayMedicationsScreen(),
 
         // =============================
         // Add Elder Flow
@@ -94,6 +123,7 @@ class MueenApp extends StatelessWidget {
             const CaregiverMedicationsScreen(),
         '/weekly-report': (context) => const WeeklyReportScreen(),
         '/medication-details': (context) => const MedicationDetailsScreen(),
+        '/dose-alert': (context) => const DoseAlertFlowScreen(),
 
         // =============================
         // Add Medication Flow

@@ -3,7 +3,7 @@ import pandas as pd
 from database import init_db
 
 DB_NAME = "mueen.db"
-EXCEL_PATH = r"C:\mueen\mueen_backend\drug interactions.xlsx"
+EXCEL_PATH = "drug interactions.xlsx"
 SHEET_NAME = 0  # أول شيت في الملف
 
 

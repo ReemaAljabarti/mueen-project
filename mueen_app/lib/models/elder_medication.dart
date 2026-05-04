@@ -1,3 +1,7 @@
+// lib/models/elder_medication.dart
+//
+// تم إضافة: medCategory (med_category من medications_catalog)
+
 class ElderMedication {
   final int id;
   final int elderId;
@@ -16,6 +20,8 @@ class ElderMedication {
   final String? routeAr;
   final String? foodGuideAr;
   final String? gtin;
+  // ← جديد: فئة الدواء من medications_catalog
+  final String? medCategory;
 
   ElderMedication({
     required this.id,
@@ -35,6 +41,7 @@ class ElderMedication {
     this.routeAr,
     this.foodGuideAr,
     this.gtin,
+    this.medCategory,
   });
 
   factory ElderMedication.fromJson(Map<String, dynamic> json) {
@@ -56,6 +63,8 @@ class ElderMedication {
       routeAr: json['route_ar'],
       foodGuideAr: json['food_guide_ar'],
       gtin: json['gtin']?.toString(),
+      // ← جديد
+      medCategory: json['med_category'],
     );
   }
 }

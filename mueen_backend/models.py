@@ -55,3 +55,38 @@ class ElderMedicationUpdate(BaseModel):
 class InteractionCheckRequest(BaseModel):
     elder_id: int
     catalog_medication_id: int
+
+
+# ─── Dose Reminder & Adherence Models ───────────────────────────────────────
+
+class DoseCreateRequest(BaseModel):
+    elder_medication_id: int
+    elder_id: int
+    scheduled_time: str          # HH:MM
+    dose_date: str               # YYYY-MM-DD
+
+
+class AdherenceTakenRequest(BaseModel):
+    dose_id: int
+    elder_id: int
+    elder_medication_id: int
+
+
+class AdherenceMissedRequest(BaseModel):
+    dose_id: int
+    elder_id: int
+    elder_medication_id: int
+    note: Optional[str] = None
+
+
+class SnoozeRequest(BaseModel):
+    dose_id: int
+    elder_id: int
+    elder_medication_id: int
+    snooze_minutes: int          # allowed: 15, 20, 30
+
+
+class NoResponseRequest(BaseModel):
+    dose_id: int
+    elder_id: int
+    elder_medication_id: int

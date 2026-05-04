@@ -6,8 +6,9 @@ import '../models/medication.dart';
 import '../models/elder_medication.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8000';
-
+  static const String baseUrl =
+      'http://10.0.2.2:8000'; // for Android emulator, use
+  // static const String baseUrl ='http://192.168.1.14:8000'; // for real device, use local network IP address of the machine running the backend
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,
     required String phoneNumber,
@@ -326,5 +327,143 @@ class ApiService {
     }
 
     return jsonDecode(response.body);
+  }
+
+  // ─── Dose Reminder & Adherence ────────────────────────────────────────────
+
+  /// GET /reminders/due-now/{elderId}
+  /// Returns due doses for the elder right now.
+  static Future<Map<String, dynamic>> getDueDoses({
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/reminders/due-now/$elderId');
+    final response = await http.get(url);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch due doses: \${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// POST /adherence/taken
+  /// Marks a dose as taken and logs it.
+  static Future<void> markDoseTaken({
+    required int doseId,
+    required int elderId,
+    required int elderMedicationId,
+  }) async {
+    final url = Uri.parse('$baseUrl/adherence/taken');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'dose_id': doseId,
+        'elder_id': elderId,
+        'elder_medication_id': elderMedicationId,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark dose taken: \${response.body}');
+    }
+  }
+
+  /// POST /adherence/missed
+  /// Marks a dose as missed and alerts the caregiver.
+  static Future<void> markDoseMissed({
+    required int doseId,
+    required int elderId,
+    required int elderMedicationId,
+    String? note,
+  }) async {
+    final url = Uri.parse('$baseUrl/adherence/missed');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'dose_id': doseId,
+        'elder_id': elderId,
+        'elder_medication_id': elderMedicationId,
+        if (note != null) 'note': note,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark dose missed: \${response.body}');
+    }
+  }
+
+  /// POST /reminders/snooze
+  /// Snoozes a dose once (15, 20, or 30 minutes only).
+  /// A second snooze attempt marks the dose as missed on the backend.
+  static Future<Map<String, dynamic>> snoozeDose({
+    required int doseId,
+    required int elderId,
+    required int elderMedicationId,
+    required int snoozeMinutes,
+  }) async {
+    final url = Uri.parse('$baseUrl/reminders/snooze');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'dose_id': doseId,
+        'elder_id': elderId,
+        'elder_medication_id': elderMedicationId,
+        'snooze_minutes': snoozeMinutes,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to snooze dose: \${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// POST /adherence/no-response
+  /// Called when the dose timer expires with no action.
+  static Future<void> markDoseNoResponse({
+    required int doseId,
+    required int elderId,
+    required int elderMedicationId,
+  }) async {
+    final url = Uri.parse('$baseUrl/adherence/no-response');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'dose_id': doseId,
+        'elder_id': elderId,
+        'elder_medication_id': elderMedicationId,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark dose no-response: \${response.body}');
+    }
+  }
+
+  /// GET /caregiver/missed-doses/{caregiverId}
+  /// Returns today's missed/no_response doses for all elders under this caregiver.
+  static Future<Map<String, dynamic>> getMissedDoses({
+    required int caregiverId,
+  }) async {
+    final url = Uri.parse('$baseUrl/caregiver/missed-doses/$caregiverId');
+    final response = await http.get(url);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load missed doses: \${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// GET /reports/weekly/{elderId}
+  /// Returns weekly adherence summary for the report screen.
+  static Future<Map<String, dynamic>> getWeeklyReport({
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/reports/weekly/$elderId');
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load weekly report: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }

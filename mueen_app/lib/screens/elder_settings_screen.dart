@@ -1,5 +1,17 @@
+// lib/screens/elder_settings_screen.dart
+//
+// التغييرات في هذه النسخة:
+//   - قراءة Elder من route arguments في didChangeDependencies
+//   - استبدال _buildBottomNav المخصص بـ ElderBottomNavBar الموحّد
+//   - تمرير _elder للـ ElderBottomNavBar بشكل صريح
+//   - currentIndex: 2 (الإعدادات نشطة)
+//   - إزالة pushReplacementNamed (كان يُدمر الـ stack)
+//   - تسجيل الخروج يبقى pushNamedAndRemoveUntil (الحالة الوحيدة المسموح بها)
+
 import 'package:flutter/material.dart';
+import '../models/elder.dart';
 import '../theme/app_theme.dart';
+import '../widgets/elder_bottom_nav_bar.dart';
 
 class ElderSettingsScreen extends StatefulWidget {
   const ElderSettingsScreen({super.key});
@@ -11,6 +23,27 @@ class ElderSettingsScreen extends StatefulWidget {
 class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
   bool _reminderSound = true;
   bool _readAloud = false;
+  Elder? _elder;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_initialized) return;
+    _initialized = true;
+
+    // قراءة Elder من route arguments
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Elder) {
+      _elder = args;
+      debugPrint(
+          '[ElderSettings] ✅ Elder loaded → id=${_elder!.id}, name=${_elder!.fullName}');
+    } else {
+      debugPrint(
+          '[ElderSettings] ⚠️ No Elder argument received — type: ${args.runtimeType}');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,17 +53,27 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
         backgroundColor: AppColors.background.withOpacity(0.95),
         elevation: 0,
         centerTitle: true,
+        automaticallyImplyLeading:
+            false, // لا سهم رجوع — التنقل عبر الـ nav bar
         title: const Text(
           'الإعدادات',
-          style: TextStyle(color: Colors.black, fontSize: 24, fontFamily: 'Tajawal'),
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 24,
+            fontFamily: 'Tajawal',
+          ),
         ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Reminders Section
-            _buildSectionHeader('التذكيرات', const Color(0xFFD4F5F9), Icons.notifications_none),
+            // قسم التذكيرات
+            _buildSectionHeader(
+              'التذكيرات',
+              const Color(0xFFD4F5F9),
+              Icons.notifications_none,
+            ),
             const SizedBox(height: 16),
             _buildSettingCard(
               'صوت التذكير',
@@ -53,14 +96,23 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
               subtitle: 'قراءة الإشعار صوتيًا',
             ),
             const SizedBox(height: 32),
-            // Account & Support Section
-            _buildSectionHeader('الحساب والدعم', const Color(0xFFFFF3D6), Icons.person_outline),
+            // قسم الحساب والدعم
+            _buildSectionHeader(
+              'الحساب والدعم',
+              const Color(0xFFFFF3D6),
+              Icons.person_outline,
+            ),
             const SizedBox(height: 16),
             _buildLogoutCard(context),
+            const SizedBox(height: 80),
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(context, 2),
+      // ── شريط التنقل الموحّد ──────────────────────────────────────────────
+      bottomNavigationBar: ElderBottomNavBar(
+        currentIndex: 2, // الإعدادات نشطة
+        elder: _elder,
+      ),
     );
   }
 
@@ -86,7 +138,8 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
     );
   }
 
-  Widget _buildSettingCard(String title, IconData icon, Widget trailing, {String? subtitle}) {
+  Widget _buildSettingCard(String title, IconData icon, Widget trailing,
+      {String? subtitle}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -130,7 +183,11 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
               padding: const EdgeInsets.only(right: 60),
               child: Text(
                 subtitle,
-                style: const TextStyle(color: Colors.grey, fontSize: 18, fontFamily: 'Tajawal'),
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 18,
+                  fontFamily: 'Tajawal',
+                ),
               ),
             ),
           ],
@@ -141,7 +198,12 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
 
   Widget _buildLogoutCard(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.pushNamedAndRemoveUntil(context, '/role-selection', (route) => false),
+      // تسجيل الخروج: الحالة الوحيدة التي نستخدم فيها pushNamedAndRemoveUntil
+      onTap: () => Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/role-selection',
+        (route) => false,
+      ),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -162,46 +224,24 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
             const Spacer(),
             const Text(
               'تسجيل الخروج',
-              style: TextStyle(color: AppColors.error, fontSize: 18, fontFamily: 'Tajawal'),
+              style: TextStyle(
+                color: Color(0xFFC0392B),
+                fontSize: 18,
+                fontFamily: 'Tajawal',
+              ),
             ),
             const SizedBox(width: 12),
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppColors.errorBg,
+                color: const Color(0xFFFDECEA),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.logout, color: AppColors.error),
+              child: const Icon(Icons.logout, color: Color(0xFFC0392B)),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNav(BuildContext context, int currentIndex) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB), width: 2)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        backgroundColor: Colors.white,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: Colors.grey,
-        selectedLabelStyle: const TextStyle(fontFamily: 'Tajawal', fontWeight: FontWeight.bold),
-        unselectedLabelStyle: const TextStyle(fontFamily: 'Tajawal'),
-        onTap: (index) {
-          if (index == 0) Navigator.pushReplacementNamed(context, '/elder-home');
-          if (index == 1) {} // Placeholder for Medications
-          if (index == 2) Navigator.pushReplacementNamed(context, '/elder-settings');
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
-          BottomNavigationBarItem(icon: Icon(Icons.medical_services), label: 'الأدوية'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'الإعدادات'),
-        ],
       ),
     );
   }

@@ -1,6 +1,18 @@
+// lib/screens/elder_login_screen.dart
+//
+// التغييرات عن النسخة الأصلية:
+//   1. بعد نجاح تسجيل الدخول، يُحوَّل result['data'] إلى Elder بأمان
+//   2. يُمرَّر كائن Elder كـ argument عند الانتقال إلى /elder-home
+//   3. أُضيف debugPrint لتشخيص استجابة الـ API
+//   4. واجهة المستخدم لم تتغير
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
+import '../models/elder.dart';
+import '../services/current_elder.dart';
+import '../services/dose_alert_service.dart';
+import '../main.dart';
 
 class ElderLoginScreen extends StatefulWidget {
   const ElderLoginScreen({super.key});
@@ -28,7 +40,6 @@ class _ElderLoginScreenState extends State<ElderLoginScreen> {
     setState(() {
       _isButtonEnabled = _phoneController.text.isNotEmpty &&
           _passwordController.text.isNotEmpty;
-
       _errorMessage = null;
     });
   }
@@ -45,13 +56,43 @@ class _ElderLoginScreenState extends State<ElderLoginScreen> {
         password: _passwordController.text,
       );
 
+      // ─── تشخيص: طباعة الاستجابة الكاملة ─────────────────────────────
+      debugPrint('[ElderLogin] API result: $result');
+
       if (!mounted) return;
 
       if (result['success'] == true) {
+        // ─── تحويل data إلى Elder بأمان ──────────────────────────────
+        Elder? elder;
+
+        try {
+          final data = result['data'];
+          debugPrint(
+              '[ElderLogin] raw data field: $data (type: ${data.runtimeType})');
+
+          if (data is Map<String, dynamic>) {
+            elder = Elder.fromJson(data);
+          } else if (data is Map) {
+            // بعض إصدارات Dart تُعيد Map<dynamic, dynamic>
+            elder = Elder.fromJson(Map<String, dynamic>.from(data));
+          }
+
+          debugPrint(
+              '[ElderLogin] elder parsed → id=${elder?.id}, name=${elder?.fullName}');
+          currentElder = elder;
+          DoseAlertService.start(navigatorKey);
+        } catch (parseError) {
+          // لا نكسر تسجيل الدخول إذا فشل الـ parsing
+          debugPrint('[ElderLogin] ⚠️ Elder.fromJson failed: $parseError');
+          elder = null;
+        }
+
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/elder-home',
           (route) => false,
+          // نُمرر Elder كـ argument — ElderHomeScreen يقرأه عبر ModalRoute
+          arguments: elder,
         );
       } else {
         setState(() {
@@ -61,16 +102,18 @@ class _ElderLoginScreenState extends State<ElderLoginScreen> {
     } catch (e) {
       if (!mounted) return;
 
+      debugPrint('[ElderLogin] ❌ catch error: $e');
+
       setState(() {
         _errorMessage = 'تعذر الاتصال بالخادم';
       });
-    } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
     }
+
+    // نُعيد ضبط حالة التحميل بعد انتهاء العملية
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   @override
