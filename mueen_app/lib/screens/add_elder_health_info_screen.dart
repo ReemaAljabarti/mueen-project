@@ -175,14 +175,15 @@ class _AddElderHealthInfoScreenState extends State<AddElderHealthInfoScreen> {
                         healthConditions: _selectedConditions,
                       );
 
-                      await ApiService.addElder(updatedElder);
+                      final savedElder =
+                          await ApiService.addElder(updatedElder);
 
                       if (!mounted) return;
 
                       Navigator.pushNamed(
                         context,
                         '/elder-added-success',
-                        arguments: updatedElder,
+                        arguments: savedElder,
                       );
                     }
                   : null,

@@ -3,6 +3,7 @@ import '../../models/medication.dart';
 import '../../services/api_service.dart';
 import 'barcode_scanner_screen.dart';
 import 'medication_found_confirmation_screen.dart';
+import '../../widgets/medication_image.dart';
 
 class AddMedicationSelectionScreen extends StatefulWidget {
   final int elderId;
@@ -67,6 +68,7 @@ class _AddMedicationSelectionScreenState
           catalogMedicationId: medication.id,
           medicationName: medication.brandNameAr,
           imageUrl: '',
+          gtin: medication.gtin,
           details: {
             'طريقة الاستخدام': medication.routeAr ?? 'غير محدد',
             'الشكل الدوائي': medication.dosageForm ?? 'غير محدد',

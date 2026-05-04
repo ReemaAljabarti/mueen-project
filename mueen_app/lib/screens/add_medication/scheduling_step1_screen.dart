@@ -36,8 +36,40 @@ class SchedulingStep1Screen extends StatefulWidget {
 class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
   String? _selectedPattern;
 
+  final List<String> _selectedDays = [];
+
+  final List<Map<String, String>> _weekDays = [
+    {'label': 'الأحد', 'value': 'sun'},
+    {'label': 'الاثنين', 'value': 'mon'},
+    {'label': 'الثلاثاء', 'value': 'tue'},
+    {'label': 'الأربعاء', 'value': 'wed'},
+    {'label': 'الخميس', 'value': 'thu'},
+    {'label': 'الجمعة', 'value': 'fri'},
+    {'label': 'السبت', 'value': 'sat'},
+  ];
+
+  bool get _canGoNext {
+    if (_selectedPattern == null) return false;
+
+    if (_selectedPattern == 'daily') return true;
+
+    if (_selectedPattern == 'specific_days') {
+      return _selectedDays.isNotEmpty;
+    }
+
+    return false;
+  }
+
+  String get _daysPatternValue {
+    if (_selectedPattern == 'daily') {
+      return 'daily';
+    }
+
+    return _selectedDays.join(',');
+  }
+
   void _goNext() {
-    if (_selectedPattern == null) return;
+    if (!_canGoNext) return;
 
     Navigator.push(
       context,
@@ -54,10 +86,30 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
           treatmentDurationType: widget.treatmentDurationType,
           startDate: widget.startDate,
           endDate: widget.endDate,
-          daysPattern: _selectedPattern!,
+          daysPattern: _daysPatternValue,
         ),
       ),
     );
+  }
+
+  void _selectPattern(String value) {
+    setState(() {
+      _selectedPattern = value;
+
+      if (value == 'daily') {
+        _selectedDays.clear();
+      }
+    });
+  }
+
+  void _toggleDay(String value) {
+    setState(() {
+      if (_selectedDays.contains(value)) {
+        _selectedDays.remove(value);
+      } else {
+        _selectedDays.add(value);
+      }
+    });
   }
 
   @override
@@ -77,6 +129,7 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
           style: const TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
+            fontFamily: 'Tajawal',
           ),
         ),
         actions: [
@@ -109,20 +162,39 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('مراجعة',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(
+                        'مراجعة',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontFamily: 'Tajawal',
+                        ),
+                      ),
                       Text(
                         'الجدولة',
                         style: TextStyle(
                           color: Colors.black,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
+                          fontFamily: 'Tajawal',
                         ),
                       ),
-                      Text('تفاصيل',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      Text('اختيار الدواء',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(
+                        'تفاصيل',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontFamily: 'Tajawal',
+                        ),
+                      ),
+                      Text(
+                        'اختيار الدواء',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                          fontFamily: 'Tajawal',
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -151,11 +223,12 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'كم مرة تريد تذكير بالدواء خلال الأسبوع؟',
+                      'كم مرة تريد تذكيرك بالدواء خلال الأسبوع؟',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
+                        fontFamily: 'Tajawal',
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -165,6 +238,7 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
                       style: TextStyle(
                         color: Colors.grey,
                         fontSize: 14,
+                        fontFamily: 'Tajawal',
                       ),
                     ),
                     const SizedBox(height: 28),
@@ -177,6 +251,10 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
                       title: 'أيام محددة من الأسبوع',
                       value: 'specific_days',
                     ),
+                    if (_selectedPattern == 'specific_days') ...[
+                      const SizedBox(height: 16),
+                      _buildWeekDaysSelector(),
+                    ],
                   ],
                 ),
               ),
@@ -186,7 +264,7 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _selectedPattern == null ? null : _goNext,
+                  onPressed: _canGoNext ? _goNext : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF16B6C8),
                     foregroundColor: Colors.white,
@@ -199,7 +277,10 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
                   ),
                   child: const Text(
                     'التالي',
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Tajawal',
+                    ),
                   ),
                 ),
               ),
@@ -217,11 +298,7 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
     final isSelected = _selectedPattern == value;
 
     return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedPattern = value;
-        });
-      },
+      onTap: () => _selectPattern(value),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.all(18),
@@ -245,8 +322,111 @@ class _SchedulingStep1ScreenState extends State<SchedulingStep1Screen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'Tajawal',
               ),
               textAlign: TextAlign.right,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekDaysSelector() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFE3ECEE),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text(
+            'اختر أيام التذكير',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Tajawal',
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'يمكنك اختيار يوم واحد أو أكثر من الأسبوع.',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 13,
+              fontFamily: 'Tajawal',
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10,
+            runSpacing: 10,
+            children: _weekDays.map((day) {
+              final label = day['label']!;
+              final value = day['value']!;
+              final isSelected = _selectedDays.contains(value);
+
+              return _buildDayChip(
+                label: label,
+                value: value,
+                isSelected: isSelected,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayChip({
+    required String label,
+    required String value,
+    required bool isSelected,
+  }) {
+    return InkWell(
+      onTap: () => _toggleDay(value),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 10,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFDDF4F7) : const Color(0xFFF7FAFB),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color:
+                isSelected ? const Color(0xFF16B6C8) : const Color(0xFFE3ECEE),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isSelected) ...[
+              const Icon(
+                Icons.check_circle,
+                size: 16,
+                color: Color(0xFF16B6C8),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF062B38) : Colors.black87,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontFamily: 'Tajawal',
+              ),
             ),
           ],
         ),

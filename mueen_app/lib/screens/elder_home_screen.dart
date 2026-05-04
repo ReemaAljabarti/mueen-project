@@ -13,6 +13,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/elder_bottom_nav_bar.dart';
 import '../services/current_elder.dart';
+
 class ElderHomeScreen extends StatefulWidget {
   const ElderHomeScreen({super.key});
 
@@ -44,9 +45,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
     if (args is Elder) {
       _elder = args;
-    }else {
-    _elder = currentElder;
-  }
+    } else {
+      _elder = currentElder;
+    }
 
     if (_elder == null) {
       debugPrint(
@@ -70,7 +71,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     debugPrint(
         '[ElderHome] ✅ Elder loaded → id=${_elder!.id}, name=${_elder!.fullName}');
     _loadMedications(_elder!.id!);
-
   }
 
 // Checks if there are any due medication doses for the elder.
@@ -78,7 +78,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 // If there are pending doses (count > 0), it navigates to the dose alert screen.
 // The screen receives the list of due doses to display them to the user.
 // Note: elder is temporarily set to null and will be replaced with actual user data later.
-  
+
   // ─── Data Loading ─────────────────────────────────────────────────────────
 
   Future<void> _loadMedications(int elderId) async {
@@ -446,9 +446,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
     return Column(
       children: [
-        AspectRatio(
-          aspectRatio: 1,
+        Expanded(
           child: Container(
+            width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -457,12 +457,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 width: 2,
               ),
             ),
-            child: Center(
-              child: _buildMedIcon(med.gtin),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Center(
+                child: _buildMedIcon(med.gtin),
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           name,
           textAlign: TextAlign.center,

@@ -162,15 +162,6 @@ def init_db():
 
 def get_caregiver_by_email_or_phone(email, phone_number):
     conn = get_connection()
-    def ensure_column(cursor, table_name: str, column_name: str, column_definition: str):
-     cursor.execute(f"PRAGMA table_info({table_name})")
-    columns = [row[1] for row in cursor.fetchall()]
-
-    if column_name not in columns:
-        cursor.execute(f"""
-            ALTER TABLE {table_name}
-            ADD COLUMN {column_name} {column_definition}
-        """)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -256,8 +247,10 @@ def insert_elder(caregiver_id, full_name, phone_number, gender, password, age, w
     ))
 
     conn.commit()
+    elder_id = cursor.lastrowid
     conn.close()
 
+    return elder_id
 
 def get_all_elders():
     conn = get_connection()

@@ -8,6 +8,7 @@ class Medication {
   final String? routeAr;
   final String? usesAr;
   final String? foodGuideAr;
+  final String? gtin;
 
   Medication({
     required this.id,
@@ -19,19 +20,21 @@ class Medication {
     this.routeAr,
     this.usesAr,
     this.foodGuideAr,
+    this.gtin,
   });
 
   factory Medication.fromJson(Map<String, dynamic> json) {
     return Medication(
       id: json['id'],
-      drugId: json['drug_id'],
-      brandNameAr: json['brand_name_ar'],
-      genericNameEn: json['generic_name_en'],
-      dosageStrength: json['dosage_strength'],
-      dosageForm: json['dosage_form'],
-      routeAr: json['route_ar'],
-      usesAr: json['uses_ar'],
-      foodGuideAr: json['food_guide_ar'],
+      drugId: json['drug_id']?.toString() ?? '',
+      brandNameAr: json['brand_name_ar']?.toString() ?? '',
+      genericNameEn: json['generic_name_en']?.toString(),
+      dosageStrength: json['dosage_strength']?.toString(),
+      dosageForm: json['dosage_form']?.toString(),
+      routeAr: json['route_ar']?.toString(),
+      usesAr: json['uses_ar']?.toString(),
+      foodGuideAr: json['food_guide_ar']?.toString(),
+      gtin: json['gtin']?.toString(),
     );
   }
 }

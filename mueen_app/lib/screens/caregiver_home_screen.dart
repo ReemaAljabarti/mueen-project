@@ -49,6 +49,27 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     }
   }
 
+  String _getGreetingText() {
+    final hour = DateTime.now().hour;
+
+    final caregiverName =
+        currentCaregiver?['full_name']?.toString().trim() ?? '';
+
+    String greeting;
+
+    if (hour < 12) {
+      greeting = 'صباح الخير';
+    } else {
+      greeting = 'مساء الخير';
+    }
+
+    if (caregiverName.isEmpty) {
+      return greeting;
+    }
+
+    return '$greeting $caregiverName';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,26 +116,21 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'الرئيسية / كبار السن',
+            Text(
+              _getGreetingText(),
               textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 20,
+              style: const TextStyle(
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 24),
-            TextField(
+            const SizedBox(height: 6),
+            const Text(
+              'نتابع معك حالة كبار السن اليوم',
               textAlign: TextAlign.right,
-              decoration: InputDecoration(
-                hintText: 'ابحث عن كبير/ة…',
-                prefixIcon: const Icon(Icons.search),
-                fillColor: Colors.white,
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
               ),
             ),
             const SizedBox(height: 24),

@@ -108,7 +108,7 @@ def caregiver_login(data: CaregiverLogin):
 
 @app.post("/elders")
 def add_elder(elder: Elder):
-    insert_elder(
+    elder_id = insert_elder(
         elder.caregiver_id,
         elder.full_name,
         elder.phone_number,
@@ -120,8 +120,19 @@ def add_elder(elder: Elder):
     )
 
     return {
+        "success": True,
         "message": "Elder added successfully",
-        "data": elder
+        "data": {
+            "id": elder_id,
+            "caregiver_id": elder.caregiver_id,
+            "full_name": elder.full_name,
+            "phone_number": elder.phone_number,
+            "gender": elder.gender,
+            "password": elder.password,
+            "age": elder.age,
+            "weight": elder.weight,
+            "health_conditions": elder.health_conditions,
+        }
     }
 
 
@@ -207,6 +218,7 @@ def search_medications_api(query: str):
             "route_ar": med["route_ar"],
             "uses_ar": med["uses_ar"],
             "food_guide_ar": med["food_guide_ar"],
+            "gtin": med["gtin"],
         })
 
     return response

@@ -55,7 +55,7 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  static Future<void> addElder(Elder elder) async {
+  static Future<Elder> addElder(Elder elder) async {
     final url = Uri.parse('$baseUrl/elders');
 
     final response = await http.post(
@@ -78,6 +78,14 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Failed to add elder: ${response.body}');
     }
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (data['success'] != true || data['data'] == null) {
+      throw Exception(data['message'] ?? 'Failed to add elder');
+    }
+
+    return Elder.fromJson(data['data']);
   }
 
   static Future<List<Elder>> getElders({

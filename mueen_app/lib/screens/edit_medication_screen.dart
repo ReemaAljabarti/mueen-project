@@ -70,6 +70,76 @@ class _EditMedicationScreenState extends State<EditMedicationScreen> {
     }
   }
 
+  Future<void> _pickTime() async {
+    final initialTime = _parseSelectedTime(_selectedTime) ?? TimeOfDay.now();
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              alwaysUse24HourFormat: false,
+            ),
+            child: child!,
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedTime = _formatTimeOfDay(picked);
+      });
+    }
+  }
+
+  TimeOfDay? _parseSelectedTime(String value) {
+    final trimmed = value.trim();
+
+    final arabicMatch =
+        RegExp(r'(\d{1,2}):(\d{2})\s*([صم])').firstMatch(trimmed);
+
+    if (arabicMatch != null) {
+      int hour = int.parse(arabicMatch.group(1)!);
+      final minute = int.parse(arabicMatch.group(2)!);
+      final period = arabicMatch.group(3)!;
+
+      if (period == 'م' && hour != 12) hour += 12;
+      if (period == 'ص' && hour == 12) hour = 0;
+
+      return TimeOfDay(hour: hour, minute: minute);
+    }
+
+    final englishMatch =
+        RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?').firstMatch(trimmed);
+
+    if (englishMatch != null) {
+      int hour = int.parse(englishMatch.group(1)!);
+      final minute = int.parse(englishMatch.group(2)!);
+      final period = englishMatch.group(3);
+
+      if (period != null) {
+        final upperPeriod = period.toUpperCase();
+        if (upperPeriod == 'PM' && hour != 12) hour += 12;
+        if (upperPeriod == 'AM' && hour == 12) hour = 0;
+      }
+
+      return TimeOfDay(hour: hour, minute: minute);
+    }
+
+    return null;
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'ص' : 'م';
+    return '$hour:$minute $period';
+  }
+
   @override
   Widget build(BuildContext context) {
     final medication = widget.medication;
@@ -251,61 +321,68 @@ class _EditMedicationScreenState extends State<EditMedicationScreen> {
   }
 
   Widget _buildTimeCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.edit_outlined, color: AppColors.primary),
-          const Spacer(),
-          GestureDetector(
-            onTap: () async {
-              final controller = TextEditingController(text: _selectedTime);
-              final result = await showDialog<String>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('تعديل الوقت'),
-                  content: TextField(
-                    controller: controller,
-                    decoration: const InputDecoration(
-                      hintText: 'مثال: ٩:٠٠ ص',
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('إلغاء'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(
-                        context,
-                        controller.text.trim(),
-                      ),
-                      child: const Text('حفظ'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (result != null && result.isNotEmpty) {
-                setState(() {
-                  _selectedTime = result;
-                });
-              }
-            },
-            child: Text(
-              _selectedTime,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+    return GestureDetector(
+      onTap: _pickTime,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text(
+              'الوقت الأساسي',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
                 fontFamily: 'Tajawal',
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 18,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7FAFB),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFFE3ECEE),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.schedule,
+                    color: AppColors.primary,
+                  ),
+                  const Spacer(),
+                  Text(
+                    _selectedTime,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Tajawal',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'اضغط لاختيار الوقت من الساعة',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 13,
+                fontFamily: 'Tajawal',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

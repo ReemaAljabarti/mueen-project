@@ -98,12 +98,14 @@ class MedicationFoundConfirmationScreen extends StatelessWidget {
                       color: const Color(0xFFF5F7F8),
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: imageUrl.isNotEmpty
+                    child: (gtin != null && gtin!.trim().isNotEmpty)
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(18),
-                            child: MedicationImage(
-                              gtin: gtin,
-                              size: 64,
+                            child: Center(
+                              child: MedicationImage(
+                                gtin: gtin,
+                                size: 120,
+                              ),
                             ),
                           )
                         : const Center(

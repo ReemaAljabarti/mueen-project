@@ -16,18 +16,55 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
   final _confirmPasswordController = TextEditingController();
   final _fullNameController = TextEditingController();
 
+  final _passwordFocusNode = FocusNode();
+  final _confirmPasswordFocusNode = FocusNode();
+
+  bool _showPasswordRequirements = false;
   bool _isButtonEnabled = false;
   bool _isLoading = false;
   String? _errorMessage;
 
+  bool get _hasMinLength => _passwordController.text.length >= 8;
+
+  bool get _hasLowercase => RegExp(r'[a-z]').hasMatch(_passwordController.text);
+
+  bool get _hasUppercase => RegExp(r'[A-Z]').hasMatch(_passwordController.text);
+
+  bool get _hasNumber => RegExp(r'[0-9]').hasMatch(_passwordController.text);
+
+  bool get _hasSpecialChar => RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=]')
+      .hasMatch(_passwordController.text);
+
+  bool get _isPasswordStrong =>
+      _hasMinLength &&
+      _hasLowercase &&
+      _hasUppercase &&
+      _hasNumber &&
+      _hasSpecialChar;
+
+  bool get _isConfirmPasswordMatched =>
+      _confirmPasswordController.text.isNotEmpty &&
+      _passwordController.text == _confirmPasswordController.text;
+
   @override
   void initState() {
     super.initState();
+
     _phoneController.addListener(_validateForm);
     _emailController.addListener(_validateForm);
     _passwordController.addListener(_validateForm);
     _confirmPasswordController.addListener(_validateForm);
     _fullNameController.addListener(_validateForm);
+
+    _passwordFocusNode.addListener(_handlePasswordFocusChange);
+    _confirmPasswordFocusNode.addListener(_handlePasswordFocusChange);
+  }
+
+  void _handlePasswordFocusChange() {
+    setState(() {
+      _showPasswordRequirements =
+          _passwordFocusNode.hasFocus || _confirmPasswordFocusNode.hasFocus;
+    });
   }
 
   void _validateForm() {
@@ -37,7 +74,8 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
           _passwordController.text.isNotEmpty &&
           _confirmPasswordController.text.isNotEmpty &&
           _fullNameController.text.isNotEmpty &&
-          _passwordController.text == _confirmPasswordController.text;
+          _isPasswordStrong &&
+          _isConfirmPasswordMatched;
 
       _errorMessage = null;
     });
@@ -98,7 +136,72 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _fullNameController.dispose();
+
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
+
     super.dispose();
+  }
+
+  Widget _buildPasswordRequirement({
+    required bool isValid,
+    required String text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            text,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: isValid ? Colors.green : Colors.red,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            isValid ? Icons.check_circle : Icons.cancel,
+            color: isValid ? Colors.green : Colors.red,
+            size: 16,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordRequirements() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildPasswordRequirement(
+          isValid: _hasMinLength,
+          text: '8 أحرف على الأقل',
+        ),
+        _buildPasswordRequirement(
+          isValid: _hasLowercase,
+          text: 'حرف إنجليزي صغير واحد على الأقل',
+        ),
+        _buildPasswordRequirement(
+          isValid: _hasUppercase,
+          text: 'حرف إنجليزي كبير واحد على الأقل',
+        ),
+        _buildPasswordRequirement(
+          isValid: _hasNumber,
+          text: 'رقم واحد على الأقل',
+        ),
+        _buildPasswordRequirement(
+          isValid: _hasSpecialChar,
+          text: 'رمز خاص واحد على الأقل مثل @ أو # أو !',
+        ),
+        _buildPasswordRequirement(
+          isValid: _isConfirmPasswordMatched,
+          text: 'تأكيد كلمة المرور مطابق',
+        ),
+      ],
+    );
   }
 
   @override
@@ -146,6 +249,28 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
               ),
             ),
             const SizedBox(height: 48),
+
+            // Full name field
+            const Text(
+              'الاسم الكامل',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _fullNameController,
+              textAlign: TextAlign.right,
+              decoration: const InputDecoration(
+                hintText: 'الاسم الثلاثي',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Phone field
             const Text(
               'رقم الهاتف',
               textAlign: TextAlign.right,
@@ -165,6 +290,8 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // Email field
             const Text(
               'البريد الإلكتروني',
               textAlign: TextAlign.right,
@@ -184,6 +311,8 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // Password field
             const Text(
               'كلمة المرور',
               textAlign: TextAlign.right,
@@ -195,6 +324,7 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _passwordController,
+              focusNode: _passwordFocusNode,
               textAlign: TextAlign.right,
               obscureText: true,
               decoration: const InputDecoration(
@@ -203,6 +333,8 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // Confirm password field
             const Text(
               'تأكيد كلمة المرور',
               textAlign: TextAlign.right,
@@ -214,6 +346,7 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _confirmPasswordController,
+              focusNode: _confirmPasswordFocusNode,
               textAlign: TextAlign.right,
               obscureText: true,
               decoration: const InputDecoration(
@@ -221,24 +354,12 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
                 prefixIcon: Icon(Icons.lock_outline),
               ),
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'الاسم الكامل',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _fullNameController,
-              textAlign: TextAlign.right,
-              decoration: const InputDecoration(
-                hintText: 'الاسم الثلاثي',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
-            ),
+
+            if (_showPasswordRequirements) ...[
+              const SizedBox(height: 12),
+              _buildPasswordRequirements(),
+            ],
+
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -250,7 +371,10 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
                 ),
               ),
             ],
+
             const SizedBox(height: 48),
+
+            // Submit button
             ElevatedButton(
               onPressed:
                   (_isButtonEnabled && !_isLoading) ? _handleSignup : null,
@@ -273,7 +397,9 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
                     )
                   : const Text('إنشاء حساب'),
             ),
+
             const SizedBox(height: 24),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
