@@ -16,6 +16,10 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
   bool isLoading = true;
   String? errorMessage;
 
+  int totalMissedToday = 0;
+  List<Map<String, dynamic>> missedDoses = [];
+  Map<int, int> missedCountByElderId = {};
+
   @override
   void initState() {
     super.initState();
@@ -32,12 +36,38 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
         return;
       }
 
+      final caregiverId = currentCaregiver!['id'];
+
+      // 1) جلب كبار السن
       final data = await ApiService.getElders(
-        caregiverId: currentCaregiver!['id'],
+        caregiverId: caregiverId,
       );
+
+      // 2) جلب جرعات اليوم الفائتة لمقدم الرعاية
+      final missedData = await ApiService.getMissedDoses(
+        caregiverId: caregiverId,
+      );
+
+      final missedList = (missedData['missed_doses'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+
+      // 3) حساب عدد الجرعات الفائتة لكل كبير سن
+      final Map<int, int> counts = {};
+
+      for (final item in missedList) {
+        final elderId = item['elder_id'];
+
+        if (elderId is int) {
+          counts[elderId] = (counts[elderId] ?? 0) + 1;
+        }
+      }
 
       setState(() {
         elders = data;
+        missedDoses = missedList;
+        totalMissedToday =
+            missedData['total_missed_today'] as int? ?? missedList.length;
+        missedCountByElderId = counts;
         isLoading = false;
         errorMessage = null;
       });
@@ -68,6 +98,137 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     }
 
     return '$greeting $caregiverName';
+  }
+
+  void _showMissedDosesSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: missedDoses.isEmpty
+                ? const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: 12),
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: AppColors.primary,
+                        size: 40,
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'لا توجد جرعات فائتة اليوم',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Tajawal',
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'الجرعات الفائتة اليوم',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Tajawal',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ...missedDoses.map((dose) {
+                        final elderName =
+                            dose['elder_name']?.toString() ?? 'كبير السن';
+                        final medName =
+                            dose['medication_name']?.toString() ?? 'دواء';
+                        final scheduledTime =
+                            dose['scheduled_time']?.toString() ?? '';
+                        final status = dose['status']?.toString() ?? '';
+
+                        final statusText =
+                            status == 'no_response' ? 'لم يستجب' : 'فائتة';
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: AppColors.warningText.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: AppColors.warningText,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      elderName,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'Tajawal',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      medName,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontFamily: 'Tajawal',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'الوقت: $scheduledTime • $statusText',
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                        fontFamily: 'Tajawal',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -136,39 +297,53 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
             const SizedBox(height: 24),
 
             // بطاقة التنبيه العلوية
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.warning,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.warningText.withOpacity(0.2),
+            // بطاقة التنبيه العلوية
+            GestureDetector(
+              onTap: _showMissedDosesSheet,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color:
+                      totalMissedToday > 0 ? AppColors.warning : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: totalMissedToday > 0
+                        ? AppColors.warningText.withOpacity(0.2)
+                        : Colors.grey.shade200,
+                  ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.chevron_left,
-                    color: AppColors.warningText,
-                  ),
-                  const Spacer(),
-                  const Text(
-                    'الجرعات الفائتة اليوم: 3',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 16,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.chevron_left,
+                      color: totalMissedToday > 0
+                          ? AppColors.warningText
+                          : Colors.grey,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.warningText,
-                      shape: BoxShape.circle,
+                    const Spacer(),
+                    Text(
+                      totalMissedToday > 0
+                          ? 'الجرعات الفائتة اليوم: $totalMissedToday'
+                          : 'لا توجد جرعات فائتة اليوم',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 16,
+                        fontFamily: 'Tajawal',
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: totalMissedToday > 0
+                            ? AppColors.warningText
+                            : AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -236,7 +411,8 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                         child: _buildElderCard(
                           context,
                           entry.value,
-                          hasMissedDose: entry.key == 0,
+                          hasMissedDose:
+                              (missedCountByElderId[entry.value.id] ?? 0) > 0,
                         ),
                       ),
                     )

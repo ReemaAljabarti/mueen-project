@@ -654,6 +654,7 @@ def get_caregiver_missed_doses_api(caregiver_id: int):
     for r in rows:
         med_name = r["display_name_for_elder"] or r["brand_name_ar"]
         missed_list.append({
+            "elder_id": r["elder_id"],
             "dose_id": r["dose_id"],
             "elder_name": r["elder_name"],
             "medication_name": med_name,

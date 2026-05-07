@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/elder.dart';
 import '../services/current_elder.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 // ---------------------------------------------------------------------------
 // نظام الألوان — مستخرج من Figma
@@ -268,11 +269,13 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   // Elder reference (passed as route argument)
   Elder? _elder;
   bool _initialized = false;
+// Audio reminder
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  int? _lastPlayedDoseIndex;
 
   @override
   void initState() {
     super.initState();
-    // _doses must be initialised before build runs
     _doses = [];
     _startTimer();
   }
@@ -296,6 +299,11 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       final doses = rawDoses.cast<Map<String, dynamic>>();
       if (doses.isNotEmpty) {
         setState(() => _doses = doses.map(_doseFromMap).toList());
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _speakShortReminder();
+        });
+
         return;
       }
     }
@@ -344,7 +352,84 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+// -------------------------------------------------------------------------
+  String _buildShortReminderText() {
+    return 'حان وقت الجرعة. خذ دواءك الآن.';
+  }
+
+  String _buildDoseDetailsText(MedicationDose dose) {
+    final medicationName = dose.brandNameAr.trim().isNotEmpty
+        ? dose.brandNameAr.trim()
+        : dose.displayTitle;
+
+    final quantity = dose.quantity.trim().isNotEmpty
+        ? dose.quantity.trim()
+        : 'جرعتك المحددة';
+
+    final route =
+        dose.route.trim().isNotEmpty ? dose.route.trim() : 'عن طريق الفم';
+
+    final instructions = <String>[];
+
+    if (dose.usageInstruction.trim().isNotEmpty) {
+      instructions.add(dose.usageInstruction.trim());
+    }
+
+    if (dose.foodInstruction.trim().isNotEmpty &&
+        dose.foodInstruction.trim() != dose.usageInstruction.trim()) {
+      instructions.add(dose.foodInstruction.trim());
+    }
+
+    final instructionText =
+        instructions.isEmpty ? '' : ' التعليمات: ${instructions.join('. ')}.';
+
+    return '$medicationName. الجرعة $quantity. $route.$instructionText';
+  }
+
+  Future<void> _speakShortReminder({bool force = false}) async {
+    debugPrint('[Audio] play short reminder called');
+
+    if (_doses.isEmpty) return;
+    if (_currentIndex < 0 || _currentIndex >= _doses.length) return;
+
+    if (!force && _lastPlayedDoseIndex == _currentIndex) return;
+
+    _lastPlayedDoseIndex = _currentIndex;
+
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource('audio/dose_reminder.mp3'));
+      debugPrint('[Audio] dose reminder played');
+    } catch (e) {
+      debugPrint('[Audio] failed to play reminder: $e');
+    }
+  }
+
+  Future<void> _speakCurrentDoseDetails() async {
+    if (_doses.isEmpty) return;
+    if (_currentIndex < 0 || _currentIndex >= _doses.length) return;
+
+    final dose = _doses[_currentIndex];
+    final text = _buildDoseDetailsText(dose);
+
+    debugPrint('[Audio] dose details text = $text');
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          text,
+          textDirection: TextDirection.rtl,
+          style: const TextStyle(fontFamily: 'Tajawal'),
+        ),
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -359,7 +444,13 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       final rawDoses = (result['due_doses'] as List<dynamic>? ?? [])
           .cast<Map<String, dynamic>>();
       debugPrint('[DoseAlert] ✅ Got ${rawDoses.length} due doses');
-      if (mounted) setState(() => _doses = rawDoses.map(_doseFromMap).toList());
+      if (mounted) {
+        setState(() => _doses = rawDoses.map(_doseFromMap).toList());
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _speakShortReminder();
+        });
+      }
     } catch (e) {
       debugPrint('[DoseAlert] ❌ getDueDoses failed: $e');
       if (mounted) setState(() => _doses = []);
@@ -508,6 +599,10 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     final nextPending = _findNextPendingDoseIndex();
     if (nextPending != null) {
       setState(() => _currentIndex = nextPending);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _speakShortReminder();
+      });
     } else {
       // Defensive fallback — should not be reached
       setState(() => _showSummary = true);
@@ -540,6 +635,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
                   onMissed: () => _showConfirmMissedDialog(),
                   onSnooze: () => _showSnoozeOptionsSheet(),
                   onVoiceTap: () => _showVoiceAssistantSheet(),
+                  onSpeakDoseDetails: () => _speakCurrentDoseDetails(),
                 ),
         ),
         // floatingActionButton removed as requested
@@ -870,6 +966,7 @@ class _ActiveScreen extends StatelessWidget {
   final VoidCallback onMissed;
   final VoidCallback onSnooze;
   final VoidCallback onVoiceTap;
+  final VoidCallback onSpeakDoseDetails;
 
   const _ActiveScreen({
     required this.doses,
@@ -881,6 +978,7 @@ class _ActiveScreen extends StatelessWidget {
     required this.onMissed,
     required this.onSnooze,
     required this.onVoiceTap,
+    required this.onSpeakDoseDetails,
   });
 
   @override
@@ -999,7 +1097,10 @@ class _ActiveScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _MedicationCard(dose: dose),
+                _MedicationCard(
+                  dose: dose,
+                  onSpeakDoseDetails: onSpeakDoseDetails,
+                ),
               ],
             ),
           ),
@@ -1104,8 +1205,12 @@ class _ActiveScreen extends StatelessWidget {
 // ---------------------------------------------------------------------------
 class _MedicationCard extends StatelessWidget {
   final MedicationDose dose;
+  final VoidCallback onSpeakDoseDetails;
 
-  const _MedicationCard({required this.dose});
+  const _MedicationCard({
+    required this.dose,
+    required this.onSpeakDoseDetails,
+  });
 
   Widget _buildDrugImage(String? gtin) {
     if (gtin == null || gtin.trim().isEmpty) {
@@ -1174,16 +1279,19 @@ class _MedicationCard extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _C.primary,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(
-                        Icons.volume_up_rounded,
-                        color: _C.white,
-                        size: 28,
+                    GestureDetector(
+                      onTap: onSpeakDoseDetails,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _C.primary,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.volume_up_rounded,
+                          color: _C.white,
+                          size: 28,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'services/dose_alert_service.dart'; 
-
+import 'services/dose_alert_service.dart';
 
 import 'screens/splash_screen.dart';
 // Role
@@ -34,6 +33,7 @@ import 'screens/weekly_report_screen.dart';
 import 'screens/edit_medication_screen.dart';
 import 'screens/medication_details_screen.dart';
 import 'screens/dose_alert_flow.dart'; // فوق مع imports
+import 'screens/voice_assistant/voice_assistant_screen.dart';
 
 // Add Medication Flow
 import 'screens/add_medication/add_medication_selection_screen.dart';
@@ -47,12 +47,9 @@ import 'screens/add_medication/scheduling_step1_screen.dart';
 import 'screens/add_medication/scheduling_step2_screen.dart';
 import 'screens/add_medication/scheduling_step3_screen.dart';
 
-
 /// مفتاح التنقل العالمي — يُستخدم من DoseAlertService لفتح شاشة التنبيه
 /// فوق أي شاشة حالية دون الحاجة إلى context.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +64,7 @@ void main() {
 
   runApp(const MueenApp());
 }
+
 class MueenApp extends StatelessWidget {
   const MueenApp({super.key});
 
@@ -74,9 +72,9 @@ class MueenApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-       // ── مفتاح التنقل العالمي ────────────────────────────────────────────
+      // ── مفتاح التنقل العالمي ────────────────────────────────────────────
       navigatorKey: navigatorKey,
-      
+
       initialRoute: '/splash',
 
       routes: {
@@ -124,6 +122,7 @@ class MueenApp extends StatelessWidget {
         '/weekly-report': (context) => const WeeklyReportScreen(),
         '/medication-details': (context) => const MedicationDetailsScreen(),
         '/dose-alert': (context) => const DoseAlertFlowScreen(),
+        '/voice-assistant': (context) => const VoiceAssistantScreen(),
 
         // =============================
         // Add Medication Flow

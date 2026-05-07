@@ -266,7 +266,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () {
+          Navigator.pushNamed(context, '/voice-assistant');
+        },
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.mic),
       ),

@@ -26,6 +26,8 @@ import '../services/current_elder.dart';
 class DoseAlertService {
   // ─── الثوابت ──────────────────────────────────────────────────────────────
   static const Duration _pollInterval = Duration(seconds: 30);
+  // مفتاح لتخزين آخر جرعات تم توليد تنبيه لها في SharedPreferences (لمنع التكرار عبر جلسات التطبيق)
+  static String? _lastGeneratedDosesKey;
 
   // ─── الحالة الداخلية ──────────────────────────────────────────────────────
   static Timer? _timer;
@@ -97,7 +99,7 @@ class DoseAlertService {
       debugPrint(
         '[DoseAlertService] checking due doses for elderId=${elder.id}',
       );
-
+      await _ensureTodayDosesGenerated(elder.id!);
       final res = await ApiService.getDueDoses(elderId: elder.id!);
 
       debugPrint('[DoseAlertService] response = $res');
@@ -137,5 +139,32 @@ class DoseAlertService {
       isDoseAlertOpen = false;
       debugPrint('[DoseAlertService] Alert screen closed — flag reset');
     });
+  }
+
+  static String _todayDoseKey(int elderId) {
+    final now = DateTime.now();
+
+    final date = '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    return '$elderId-$date';
+  }
+
+  static Future<void> _ensureTodayDosesGenerated(int elderId) async {
+    final key = _todayDoseKey(elderId);
+
+    if (_lastGeneratedDosesKey == key) {
+      return;
+    }
+
+    try {
+      final result = await ApiService.generateTodayDoses(elderId: elderId);
+      _lastGeneratedDosesKey = key;
+
+      debugPrint('[DoseAlertService] Today doses generated: $result');
+    } catch (e) {
+      debugPrint('[DoseAlertService] generateTodayDoses failed: $e');
+    }
   }
 }

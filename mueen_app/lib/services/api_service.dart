@@ -6,9 +6,12 @@ import '../models/medication.dart';
 import '../models/elder_medication.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://10.0.2.2:8000'; // for Android emulator, use
-  // static const String baseUrl ='http://192.168.1.14:8000'; // for real device, use local network IP address of the machine running the backend
+  // Android emulator:
+  // static const String baseUrl = 'http://10.0.2.2:8001';
+
+  // Real device:
+  static const String baseUrl = 'http://192.168.1.14:8001';
+
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,
     required String phoneNumber,
@@ -470,6 +473,19 @@ class ApiService {
 
     if (response.statusCode != 200) {
       throw Exception('Failed to load weekly report: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+    static Future<Map<String, dynamic>> generateTodayDoses({
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/reminders/generate-today/$elderId');
+
+    final response = await http.post(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to generate today doses: ${response.body}');
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;

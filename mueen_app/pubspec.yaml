@@ -1,10 +1,10 @@
 name: mueen_settings
 description: Mueen App - Settings Screen
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -15,6 +15,7 @@ dependencies:
   http: ^1.2.1
   flutter_svg: ^2.0.9
   mobile_scanner: ^5.1.1
+  audioplayers: ^6.6.0
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +29,8 @@ flutter:
     - assets/fonts/
     - assets/fonts/images/mueenicon.png
     - assets/drug_images/
+    - assets/audio/dose_reminder.mp3
+
   fonts:
     - family: Tajawal
       fonts:

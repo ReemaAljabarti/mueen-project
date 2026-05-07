@@ -1196,7 +1196,7 @@ def get_elder_caregiver_id(elder_id: int):
     conn.close()
     return row["caregiver_id"] if row else None
 
-
+#تعديل بسيط على الجرعات المتأخرة
 def get_missed_doses_for_caregiver(caregiver_id: int):
     """Return today's missed/no_response doses for all elders under this caregiver."""
     from datetime import datetime
@@ -1206,7 +1206,9 @@ def get_missed_doses_for_caregiver(caregiver_id: int):
 
     cursor.execute("""
         SELECT
+                   
             md.id AS dose_id,
+            md.elder_id,
             md.scheduled_time,
             md.status,
             e.full_name AS elder_name,
