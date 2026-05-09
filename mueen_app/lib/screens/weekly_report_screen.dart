@@ -44,67 +44,96 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'التقرير الأسبوعي',
-          style: TextStyle(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          automaticallyImplyLeading: false,
+          title: const Text(
+            'التقرير الأسبوعي',
+            style: TextStyle(
               color: Colors.black,
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Tajawal'),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: _elderId == null
-          ? const Center(
-              child: Text(
-                'لا يوجد كبير سن محدد لعرض التقرير',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Tajawal',
-                  fontSize: 18,
+              fontFamily: 'Tajawal',
+            ),
+          ),
+          actions: [
+            IconButton(
+              icon: const Directionality(
+                textDirection: TextDirection.ltr,
+                child: Icon(
+                  Icons.arrow_back,
                   color: Colors.black,
                 ),
               ),
-            )
-          : FutureBuilder<Map<String, dynamic>>(
-              future: _reportFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  );
-                }
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+        body: _elderId == null
+            ? const Center(
+                child: Text(
+                  'لا يوجد كبير سن محدد لعرض التقرير',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Tajawal',
+                    fontSize: 18,
+                    color: Colors.black,
+                  ),
+                ),
+              )
+            : FutureBuilder<Map<String, dynamic>>(
+                future: _reportFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    );
+                  }
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'تعذر تحميل التقرير الأسبوعي',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'Tajawal',
-                          fontSize: 18,
-                          color: Colors.black,
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'تعذر تحميل التقرير الأسبوعي',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                            fontSize: 18,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }
+                    );
+                  }
 
-                final report = snapshot.data ?? {};
-                final totalDoses = report['total_doses'] ?? 0;
+                  final report = snapshot.data ?? {};
+                  final totalDoses = _asInt(report['total_doses']);
 
-                if (totalDoses == 0) {
+                  if (totalDoses == 0) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildElderInfoCard(_elderName),
+                          const SizedBox(height: 24),
+                          _buildEmptyReportCard(),
+                          const SizedBox(height: 24),
+                          _buildWeeklyOverview(report),
+                        ],
+                      ),
+                    );
+                  }
+
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -112,73 +141,48 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                       children: [
                         _buildElderInfoCard(_elderName),
                         const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'لا يوجد تقرير لهذا الأسبوع',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: 'Tajawal',
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
+                        _buildAdherenceCard(report),
+                        const SizedBox(height: 24),
+                        _buildWeeklyOverview(report),
+                        const SizedBox(height: 24),
+                        _buildMostMissedSection(report),
+                        const SizedBox(height: 24),
+                        _buildMissedDosesSection(report),
                       ],
                     ),
                   );
-                }
-
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildElderInfoCard(_elderName),
-                      const SizedBox(height: 24),
-                      _buildAdherenceCard(report),
-                      const SizedBox(height: 24),
-                      _buildWeeklyOverview(report),
-                      const SizedBox(height: 24),
-                      _buildMostMissedSection(report),
-                      const SizedBox(height: 24),
-                      _buildMissedDosesSection(report),
-                    ],
-                  ),
-                );
-              },
-            ),
+                },
+              ),
+      ),
     );
   }
 
   Widget _buildElderInfoCard(String elderName) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFF3F4F6)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'تقرير عن',
+            textAlign: TextAlign.right,
             style: TextStyle(
               color: Colors.grey,
               fontSize: 14,
               fontFamily: 'Tajawal',
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             elderName,
+            textAlign: TextAlign.right,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
               fontFamily: 'Tajawal',
             ),
@@ -188,11 +192,52 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     );
   }
 
+  Widget _buildEmptyReportCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF3F4F6)),
+      ),
+      child: const Column(
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: Colors.grey,
+            size: 34,
+          ),
+          SizedBox(height: 12),
+          Text(
+            'لا يوجد تقرير لهذا الأسبوع',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Tajawal',
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'سيظهر التقرير بعد تسجيل الجرعات خلال الأسبوع.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Tajawal',
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAdherenceCard(Map<String, dynamic> report) {
-    final adherence = (report['adherence_percentage'] ?? 0).toString();
-    final taken = (report['taken'] ?? 0).toString();
+    final adherence = _formatPercentage(report['adherence_percentage']);
+    final taken = _asInt(report['taken']).toString();
     final missed =
-        ((report['missed'] ?? 0) + (report['no_response'] ?? 0)).toString();
+        (_asInt(report['missed']) + _asInt(report['no_response'])).toString();
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -204,7 +249,6 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
                 width: 80,
@@ -223,8 +267,9 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                   size: 32,
                 ),
               ),
+              const Spacer(),
               Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'الالتزام هذا الأسبوع',
@@ -237,7 +282,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                   Text(
                     '$adherence%',
                     style: const TextStyle(
-                      fontSize: 48,
+                      fontSize: 46,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'Tajawal',
                     ),
@@ -251,21 +296,21 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
             children: [
               Expanded(
                 child: _buildStatBox(
-                  'جرعة مفوتة',
-                  missed,
-                  const Color(0xFFF6E6C8),
-                  const Color(0xFF663C00),
-                  Icons.close,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatBox(
                   'جرعة مأخوذة',
                   taken,
                   const Color(0xFFD4F5F9),
                   const Color(0xFF003948),
                   Icons.check,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildStatBox(
+                  'جرعة مفوتة',
+                  missed,
+                  const Color(0xFFF6E6C8),
+                  const Color(0xFF663C00),
+                  Icons.close,
                 ),
               ),
             ],
@@ -276,33 +321,48 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   }
 
   Widget _buildStatBox(
-      String label, String value, Color bg, Color textCol, IconData icon) {
+    String label,
+    String value,
+    Color bg,
+    Color textCol,
+    IconData icon,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(24),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(icon, color: textCol, size: 20),
           ),
           const SizedBox(height: 12),
-          Text(value,
-              style: TextStyle(
-                  color: textCol,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Tajawal')),
-          Text(label,
-              style: TextStyle(
-                  color: textCol.withOpacity(0.7),
-                  fontSize: 12,
-                  fontFamily: 'Tajawal')),
+          Text(
+            value,
+            style: TextStyle(
+              color: textCol,
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Tajawal',
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              color: textCol.withOpacity(0.7),
+              fontSize: 13,
+              fontFamily: 'Tajawal',
+            ),
+          ),
         ],
       ),
     );
@@ -310,74 +370,191 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
 
   Widget _buildWeeklyOverview(Map<String, dynamic> report) {
     final dailyOverview = (report['daily_overview'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+        .whereType<Map<String, dynamic>>()
+        .toList();
 
-    const dayLabels = ['س', 'ح', 'ن', 'ث', 'ع', 'خ', 'ج'];
+    final weekDays = _buildSundayToSaturdayWeek(dailyOverview);
+    final overviewByDate = <String, Map<String, dynamic>>{};
+
+    for (final day in dailyOverview) {
+      final date = (day['date'] ?? '').toString();
+      if (date.isNotEmpty) {
+        overviewByDate[date] = day;
+      }
+    }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'نظرة عامة على الأسبوع',
+          textAlign: TextAlign.right,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             fontFamily: 'Tajawal',
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFF3F4F6)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(dailyOverview.length, (index) {
-              final dayData = dailyOverview[index];
-              final date = (dayData['date'] ?? '').toString();
-              final dayNumber = date.length >= 10 ? date.substring(8, 10) : '';
-              final taken = dayData['taken'] ?? 0;
-              final missed = dayData['missed'] ?? 0;
-              final noResponse = dayData['no_response'] ?? 0;
+          child: Column(
+            children: [
+              _buildWeekTitle(weekDays),
+              const SizedBox(height: 18),
+              Directionality(
+                textDirection: TextDirection.rtl,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: weekDays.map((date) {
+                    final dateKey = _dateKey(date);
+                    final dayData = overviewByDate[dateKey];
 
-              final isSuccess = taken > 0 && missed == 0 && noResponse == 0;
-              final label = index < dayLabels.length ? dayLabels[index] : '';
-
-              return _buildDayIndicator(label, dayNumber, isSuccess);
-            }),
+                    return _buildDayIndicator(
+                      day: _arabicDayShort(date),
+                      date: date.day.toString().padLeft(2, '0'),
+                      state: _getDayState(dayData),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              _buildWeeklyHint(),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDayIndicator(String day, String date, bool isSuccess) {
+  Widget _buildWeekTitle(List<DateTime> weekDays) {
+    final start = weekDays.first;
+    final end = weekDays.last;
+
+    final sameMonth = start.month == end.month && start.year == end.year;
+
+    final monthTitle = sameMonth
+        ? '${_arabicMonthName(start.month)} ${start.year}'
+        : '${_arabicMonthName(start.month)} - ${_arabicMonthName(end.month)} ${end.year}';
+
+    final rangeTitle = sameMonth
+        ? '${start.day} - ${end.day} ${_arabicMonthName(end.month)} ${end.year}'
+        : '${start.day} ${_arabicMonthName(start.month)} - ${end.day} ${_arabicMonthName(end.month)} ${end.year}';
+
     return Column(
       children: [
-        Text(day,
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Tajawal')),
+        Text(
+          monthTitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(date,
-            style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Tajawal')),
-        const SizedBox(height: 8),
+        Text(
+          'الأسبوع: $rangeTitle',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontSize: 13,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDayIndicator({
+    required String day,
+    required String date,
+    required _DayState state,
+  }) {
+    final icon = switch (state) {
+      _DayState.allTaken => Icons.check,
+      _DayState.hasMissed => Icons.close,
+      _DayState.noDoses => Icons.remove,
+    };
+
+    final bgColor = switch (state) {
+      _DayState.allTaken => AppColors.primary,
+      _DayState.hasMissed => const Color(0xFFF2D6D3),
+      _DayState.noDoses => const Color(0xFFE5E7EB),
+    };
+
+    final iconColor = switch (state) {
+      _DayState.allTaken => Colors.white,
+      _DayState.hasMissed => const Color(0xFF7A1F1F),
+      _DayState.noDoses => const Color(0xFF6B7280),
+    };
+
+    return Column(
+      children: [
+        Text(
+          day,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Tajawal',
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          date,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Tajawal',
+          ),
+        ),
+        const SizedBox(height: 10),
         Container(
-          width: 20,
-          height: 20,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
-            color: isSuccess ? AppColors.primary : const Color(0xFFF2D6D3),
+            color: bgColor,
             shape: BoxShape.circle,
           ),
-          child: Icon(isSuccess ? Icons.check : Icons.close,
-              color: isSuccess ? Colors.black : const Color(0xFF7A1F1F),
-              size: 12),
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyHint() {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 14,
+      runSpacing: 10,
+      children: const [
+        _HintItem(
+          label: 'كل الجرعات',
+          color: AppColors.primary,
+          icon: Icons.check,
+          iconColor: Colors.white,
+        ),
+        _HintItem(
+          label: 'مفوتة',
+          color: Color(0xFFF2D6D3),
+          icon: Icons.close,
+          iconColor: Color(0xFF7A1F1F),
+        ),
+        _HintItem(
+          label: 'لا يوجد',
+          color: Color(0xFFE5E7EB),
+          icon: Icons.remove,
+          iconColor: Color(0xFF6B7280),
         ),
       ],
     );
@@ -386,42 +563,29 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   Widget _buildMostMissedSection(Map<String, dynamic> report) {
     final mostMissed =
         (report['most_missed_medications'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
+            .whereType<Map<String, dynamic>>()
+            .toList();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'الأدوية الأكثر تفويتًا',
+          textAlign: TextAlign.right,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             fontFamily: 'Tajawal',
           ),
         ),
         const SizedBox(height: 16),
         if (mostMissed.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Text(
-              'لا توجد أدوية مفوتة هذا الأسبوع',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-                fontFamily: 'Tajawal',
-              ),
-            ),
-          )
+          _buildInfoBox('لا توجد أدوية مفوتة هذا الأسبوع')
         else
           ...mostMissed.map((med) {
             final name = (med['brand_name_ar'] ?? 'دواء').toString();
             final category = (med['med_category'] ?? '').toString();
-            final count = (med['miss_count'] ?? 0).toString();
+            final count = _asInt(med['miss_count']).toString();
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -440,33 +604,53 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(24)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF3F4F6)),
+      ),
       child: Row(
         children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dose,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 14,
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-                color: const Color(0xFFF2D6D3),
-                borderRadius: BorderRadius.circular(12)),
-            child: Text(count,
-                style: const TextStyle(
-                    color: Color(0xFF7A1F1F),
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Tajawal')),
-          ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(name,
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Tajawal')),
-              Text(dose,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 14, fontFamily: 'Tajawal')),
-            ],
+              color: const Color(0xFFF2D6D3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              count,
+              style: const TextStyle(
+                color: Color(0xFF7A1F1F),
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Tajawal',
+              ),
+            ),
           ),
         ],
       ),
@@ -475,37 +659,24 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
 
   Widget _buildMissedDosesSection(Map<String, dynamic> report) {
     final missedDoses = (report['missed_doses'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+        .whereType<Map<String, dynamic>>()
+        .toList();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'الجرعات الفائتة هذا الأسبوع',
+          textAlign: TextAlign.right,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             fontFamily: 'Tajawal',
           ),
         ),
         const SizedBox(height: 16),
         if (missedDoses.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Text(
-              'لا توجد جرعات فائتة هذا الأسبوع',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-                fontFamily: 'Tajawal',
-              ),
-            ),
-          )
+          _buildInfoBox('لا توجد جرعات فائتة هذا الأسبوع')
         else
           ...missedDoses.map((dose) {
             final name = (dose['brand_name_ar'] ?? 'دواء').toString();
@@ -532,33 +703,238 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(24)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF3F4F6)),
+      ),
       child: Row(
         children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  time,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 14,
+                    fontFamily: 'Tajawal',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12)),
-            child: Text(period,
-                style: const TextStyle(fontSize: 12, fontFamily: 'Tajawal')),
-          ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(name,
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Tajawal')),
-              Text(time,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 14, fontFamily: 'Tajawal')),
-            ],
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              period,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Tajawal',
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoBox(String text) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF3F4F6)),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.grey,
+          fontSize: 14,
+          fontFamily: 'Tajawal',
+        ),
+      ),
+    );
+  }
+
+  List<DateTime> _buildSundayToSaturdayWeek(
+    List<Map<String, dynamic>> dailyOverview,
+  ) {
+    final parsedDates = dailyOverview
+        .map((item) => _parseDate(item['date']?.toString()))
+        .whereType<DateTime>()
+        .toList();
+
+    final referenceDate =
+        parsedDates.isNotEmpty ? parsedDates.first : DateTime.now();
+
+    final daysFromSunday = referenceDate.weekday % 7;
+    final sunday = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    ).subtract(Duration(days: daysFromSunday));
+
+    return List.generate(7, (index) => sunday.add(Duration(days: index)));
+  }
+
+  _DayState _getDayState(Map<String, dynamic>? dayData) {
+    if (dayData == null) return _DayState.noDoses;
+
+    final taken = _asInt(dayData['taken']);
+    final missed = _asInt(dayData['missed']);
+    final noResponse = _asInt(dayData['no_response']);
+    final total = taken + missed + noResponse;
+
+    if (total == 0) return _DayState.noDoses;
+    if (taken > 0 && missed == 0 && noResponse == 0) {
+      return _DayState.allTaken;
+    }
+
+    return _DayState.hasMissed;
+  }
+
+  DateTime? _parseDate(String? value) {
+    if (value == null || value.isEmpty) return null;
+
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _dateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+
+    return '$year-$month-$day';
+  }
+
+  String _arabicDayShort(DateTime date) {
+    switch (date.weekday) {
+      case DateTime.sunday:
+        return 'ح';
+      case DateTime.monday:
+        return 'ن';
+      case DateTime.tuesday:
+        return 'ث';
+      case DateTime.wednesday:
+        return 'ع';
+      case DateTime.thursday:
+        return 'خ';
+      case DateTime.friday:
+        return 'ج';
+      case DateTime.saturday:
+      default:
+        return 'س';
+    }
+  }
+
+  String _arabicMonthName(int month) {
+    const months = [
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+
+    if (month < 1 || month > 12) return '';
+    return months[month - 1];
+  }
+
+  String _formatPercentage(dynamic value) {
+    final number = double.tryParse(value?.toString() ?? '0') ?? 0;
+
+    if (number == number.roundToDouble()) {
+      return number.toInt().toString();
+    }
+
+    return number.toStringAsFixed(1);
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+
+    return int.tryParse(value?.toString() ?? '0') ?? 0;
+  }
+}
+
+enum _DayState {
+  allTaken,
+  hasMissed,
+  noDoses,
+}
+
+class _HintItem extends StatelessWidget {
+  final String label;
+  final Color color;
+  final IconData icon;
+  final Color iconColor;
+
+  const _HintItem({
+    required this.label,
+    required this.color,
+    required this.icon,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: 12,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
+      ],
     );
   }
 }

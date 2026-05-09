@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 import '../services/current_user.dart';
+//لتجنب مشكلة فتح شاشة الجرعة
+import '../services/current_elder.dart';
+import '../services/dose_alert_service.dart';
 
 class CaregiverLoginScreen extends StatefulWidget {
   const CaregiverLoginScreen({super.key});
@@ -57,6 +60,10 @@ class _CaregiverLoginScreenState extends State<CaregiverLoginScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
+        // Caregiver mode should not receive elder dose alerts.
+        DoseAlertService.stop();
+        currentElder = null;
+
         currentCaregiver = result['data'];
 
         Navigator.pushNamedAndRemoveUntil(

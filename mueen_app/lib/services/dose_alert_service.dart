@@ -36,6 +36,9 @@ class DoseAlertService {
   /// true إذا كانت شاشة Dose Alert مفتوحة حالياً — يمنع التكرار.
   static bool isDoseAlertOpen = false;
 
+  // Notifies the elder home screen to refresh after a dose alert closes.
+  static final ValueNotifier<int> homeRefreshSignal = ValueNotifier<int>(0);
+
   // ─── واجهة عامة ───────────────────────────────────────────────────────────
 
   /// يُسجّل navigatorKey العالمي من main.dart.
@@ -81,6 +84,18 @@ class DoseAlertService {
         '[DoseAlertService] Started — polling every ${_pollInterval.inSeconds}s');
   }
 
+//=========================
+  static bool _isElderAreaRoute(String? routeName) {
+    if (routeName == null) return false;
+
+    return routeName == '/elder-home' ||
+        routeName == '/weekly-pill-box' ||
+        routeName == '/elder-today-schedule' ||
+        routeName == '/elder-settings' ||
+        routeName == '/voice-assistant';
+  }
+
+//=====================================
   static Future<void> _checkNow() async {
     // لا تتحقق إذا لم يكن هناك كبير سن مسجّل
     final elder = currentElder;
@@ -95,11 +110,30 @@ class DoseAlertService {
       return;
     }
 
+    // نحاول معرفة الصفحة الحالية.
+    // ملاحظة: أحيانًا ModalRoute يرجع null حتى لو المستخدم داخل شاشة كبير السن،
+    // لذلك لا نمنع التنبيه إذا كان routeName = null.
+    final navigator = _navigatorKey?.currentState;
+    final currentRouteName = navigator == null
+        ? null
+        : ModalRoute.of(navigator.context)?.settings.name;
+
+    // إذا عرفنا اسم الصفحة وكانت ليست من شاشات كبير السن، نمنع التنبيه.
+    // إذا كان الاسم null، نكمل اعتمادًا على currentElder لأن كبير السن مسجل فعليًا.
+    if (currentRouteName != null && !_isElderAreaRoute(currentRouteName)) {
+      debugPrint(
+        '[DoseAlertService] Current route is not elder area ($currentRouteName) — skipping check',
+      );
+      return;
+    }
+
     try {
       debugPrint(
         '[DoseAlertService] checking due doses for elderId=${elder.id}',
       );
+
       await _ensureTodayDosesGenerated(elder.id!);
+
       final res = await ApiService.getDueDoses(elderId: elder.id!);
 
       debugPrint('[DoseAlertService] response = $res');
@@ -117,6 +151,7 @@ class DoseAlertService {
       debugPrint('[DoseAlertService] API error (non-fatal): $e');
     }
   }
+  //========================================
 
   static void _openAlertScreen(dynamic elder, List<dynamic> doses) {
     final navigator = _navigatorKey?.currentState;
@@ -138,6 +173,9 @@ class DoseAlertService {
       // عند إغلاق الشاشة، نسمح بفتحها مرة أخرى في الدورة القادمة
       isDoseAlertOpen = false;
       debugPrint('[DoseAlertService] Alert screen closed — flag reset');
+
+      // Refresh the elder home screen immediately after dose status changes.
+      homeRefreshSignal.value++;
     });
   }
 

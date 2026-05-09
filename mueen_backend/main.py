@@ -41,6 +41,7 @@ from database import (
     create_caregiver_alert,
     get_elder_caregiver_id,
     get_missed_doses_for_caregiver,
+    auto_mark_expired_doses_for_caregiver,
     get_weekly_adherence_summary,
     generate_today_doses,
     get_today_doses_for_elder,
@@ -615,40 +616,53 @@ def snooze_dose_api(data: SnoozeRequest):
 def no_response_api(data: NoResponseRequest):
     """
     Called when the dose timer expires with no action from the elder.
-    Marks dose as no_response and alerts caregiver.
+    Final logic: no response is counted as missed.
     """
-    conn_helper = __import__("database")
-    conn = conn_helper.get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE medication_doses SET status = 'no_response' WHERE id = ? AND status IN ('pending', 'snoozed')",
-        (data.dose_id,)
-    )
-    conn.commit()
-    conn.close()
+    updated_count = mark_dose_missed(data.dose_id)
+
+    if updated_count == 0:
+        return {
+            "success": False,
+            "status": "not_updated",
+            "message": "Dose was not found or could not be updated",
+        }
 
     insert_adherence_log(
         dose_id=data.dose_id,
         elder_id=data.elder_id,
         elder_medication_id=data.elder_medication_id,
-        status="no_response",
-        note="timer_expired",
+        status="missed",
+        note="timer_expired_no_response",
     )
+
     caregiver_id = get_elder_caregiver_id(data.elder_id)
+
     if caregiver_id:
         create_caregiver_alert(
             caregiver_id=caregiver_id,
             elder_id=data.elder_id,
             dose_id=data.dose_id,
-            alert_type="no_response",
-            message="كبير السن لم يستجب لتنبيه الجرعة وانتهت مهلة الاستجابة",
+            alert_type="missed_dose",
+            message="كبير السن لم يتناول الجرعة بعد انتهاء مهلة الاستجابة",
         )
-    return {"success": True, "status": "no_response"}
 
+    return {
+        "success": True,
+        "status": "missed",
+        "reason": "timer_expired_no_response",
+    }
+
+#==========================================================
+#==========================================================
 
 @app.get("/caregiver/missed-doses/{caregiver_id}")
 def get_caregiver_missed_doses_api(caregiver_id: int):
     """Return today's missed/no_response doses for all elders under this caregiver."""
+
+    # Convert old pending/snoozed doses into missed before reading.
+    # This covers cases where the elder did not open or interact with Dose Alert.
+    auto_mark_expired_doses_for_caregiver(caregiver_id)
+
     rows = get_missed_doses_for_caregiver(caregiver_id)
     missed_list = []
     for r in rows:

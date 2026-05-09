@@ -732,6 +732,18 @@ def generate_today_doses(elder_id: int):
 
     today = datetime.now().strftime("%Y-%m-%d")
 
+    # Match the format used in days_pattern, such as: sun,tue
+    weekday_map = {
+        0: "mon",
+        1: "tue",
+        2: "wed",
+        3: "thu",
+        4: "fri",
+        5: "sat",
+        6: "sun",
+    }
+    today_day = weekday_map[datetime.now().weekday()]
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -751,6 +763,20 @@ def generate_today_doses(elder_id: int):
 
     for med in medications:
         elder_medication_id = med["id"]
+        days_pattern = (med["days_pattern"] or "").strip().lower()
+
+        # Only generate a dose if the medication is scheduled for today.
+        if days_pattern != "daily":
+            scheduled_days = [
+                day.strip()
+                for day in days_pattern.split(",")
+                if day.strip()
+            ]
+
+            if today_day not in scheduled_days:
+                skipped_count += 1
+                continue
+
         scheduled_time = normalize_time_for_db(med["first_reminder_time"])
 
         if not scheduled_time:
@@ -808,8 +834,7 @@ def generate_today_doses(elder_id: int):
         "created_count": created_count,
         "skipped_count": skipped_count,
         "total_checked": len(medications),
-    }
-
+    } 
 
 def normalize_time_for_db(time_value: str | None):
     """
@@ -851,7 +876,7 @@ def normalize_time_for_db(time_value: str | None):
 
 #عرض كل جرعات اليوم
 
-    def get_today_doses_for_elder(elder_id: int):
+def get_today_doses_for_elder(elder_id: int):
         """Return all dose records for today, not only due-now doses."""
         from datetime import datetime
 
@@ -950,59 +975,152 @@ def get_next_dose_for_elder(elder_id: int):
 
 
 def get_due_doses_for_elder(elder_id: int):
-    """Return doses scheduled for today that are due right now (within a 10-minute window) or snoozed-and-expired."""
+    """Return doses that are due now and auto-mark expired doses as missed."""
     from datetime import datetime, timedelta
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
     now_str = now.strftime("%H:%M")
     ten_mins_ago_str = (now - timedelta(minutes=10)).strftime("%H:%M")
 
     cursor.execute("""
-    SELECT
-        md.id,
-        md.elder_medication_id,
-        md.elder_id,
-        md.scheduled_time,
-        md.dose_date,
-        md.status,
-        md.snooze_count,
-        md.snoozed_until,
+        SELECT
+            md.id,
+            md.elder_id,
+            md.elder_medication_id,
+            md.status,
+            md.scheduled_time,
+            md.snoozed_until,
+            e.caregiver_id
+        FROM medication_doses md
+        JOIN elders e ON md.elder_id = e.id
+        WHERE md.elder_id = ?
+          AND md.dose_date = ?
+          AND (
+              (md.status = 'pending' AND md.scheduled_time < ?)
+              OR
+              (md.status = 'snoozed' AND md.snoozed_until IS NOT NULL AND md.snoozed_until < ?)
+          )
+    """, (elder_id, today, ten_mins_ago_str, ten_mins_ago_str))
 
-        em.display_name_for_elder,
-        em.dosage_amount,
-        em.dosage_unit,
-        em.usage_instruction,
+    expired_doses = cursor.fetchall()
 
-        mc.brand_name_ar,
-        mc.generic_name_en,
-        mc.dosage_form,
-        mc.dosage_strength,
-        mc.route_ar,
-        mc.food_guide_ar,
-        mc.uses_ar,
-        mc.med_category,
-        mc.gtin
+    for dose in expired_doses:
+        cursor.execute("""
+            UPDATE medication_doses
+            SET
+                status = 'missed',
+                missed_at = CURRENT_TIMESTAMP,
+                last_updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND status IN ('pending', 'snoozed')
+        """, (dose["id"],))
 
-    FROM medication_doses md
-    JOIN elder_medications em ON md.elder_medication_id = em.id
-    JOIN medications_catalog mc ON em.catalog_medication_id = mc.id
-    WHERE md.elder_id = ?
-      AND md.dose_date = ?
-      AND (
-          (md.status = 'pending' AND md.scheduled_time <= ? AND md.scheduled_time >= ?)
-          OR (md.status = 'snoozed' AND md.snoozed_until <= ?)
-      )
-    ORDER BY md.scheduled_time ASC
-""", (elder_id, today, now_str, ten_mins_ago_str, now_str))
+        if cursor.rowcount > 0:
+            cursor.execute("""
+                INSERT INTO adherence_logs (
+                    dose_id,
+                    elder_id,
+                    elder_medication_id,
+                    status,
+                    event_type,
+                    event_time,
+                    snooze_minutes,
+                    note
+                )
+                VALUES (?, ?, ?, 'missed', 'missed', CURRENT_TIMESTAMP, NULL, ?)
+            """, (
+                dose["id"],
+                dose["elder_id"],
+                dose["elder_medication_id"],
+                "Auto marked as missed after no response window.",
+            ))
+
+            if dose["caregiver_id"]:
+                cursor.execute("""
+                    INSERT INTO caregiver_alerts (
+                        caregiver_id,
+                        elder_id,
+                        dose_id,
+                        alert_type,
+                        message,
+                        source
+                    )
+                    VALUES (?, ?, ?, 'missed_dose', ?, 'system')
+                """, (
+                    dose["caregiver_id"],
+                    dose["elder_id"],
+                    dose["id"],
+                    "كبير السن لم يتناول الجرعة بعد انتهاء مهلة الاستجابة",
+                ))
+
+    conn.commit()
+
+    cursor.execute("""
+        SELECT
+            md.id,
+            md.elder_medication_id,
+            md.elder_id,
+            md.scheduled_time,
+            md.dose_date,
+            md.status,
+            md.snooze_count,
+            md.snoozed_until,
+
+            em.display_name_for_elder,
+            em.dosage_amount,
+            em.dosage_unit,
+            em.usage_instruction,
+
+            mc.brand_name_ar,
+            mc.generic_name_en,
+            mc.dosage_form,
+            mc.dosage_strength,
+            mc.route_ar,
+            mc.food_guide_ar,
+            mc.uses_ar,
+            mc.med_category,
+            mc.gtin
+
+        FROM medication_doses md
+        JOIN elder_medications em ON md.elder_medication_id = em.id
+        JOIN medications_catalog mc ON em.catalog_medication_id = mc.id
+        WHERE md.elder_id = ?
+          AND md.dose_date = ?
+          AND (
+              (
+                  md.status = 'pending'
+                  AND md.scheduled_time <= ?
+                  AND md.scheduled_time >= ?
+              )
+              OR
+              (
+                  md.status = 'snoozed'
+                  AND md.snoozed_until IS NOT NULL
+                  AND md.snoozed_until <= ?
+                  AND md.snoozed_until >= ?
+              )
+          )
+        ORDER BY md.scheduled_time ASC
+    """, (
+        elder_id,
+        today,
+        now_str,
+        ten_mins_ago_str,
+        now_str,
+        ten_mins_ago_str,
+    ))
 
     results = cursor.fetchall()
     conn.close()
     return results
 
 
+
+#===========================================================
 def create_dose_for_elder(elder_medication_id: int, elder_id: int, scheduled_time: str, dose_date: str):
     """Insert a new pending dose record."""
     conn = get_connection()
@@ -1080,7 +1198,15 @@ def snooze_dose(dose_id: int, snooze_minutes: int):
         conn.close()
         return {"action": "not_found"}
 
-    snooze_count = row["snooze_count"]
+    snooze_count = row["snooze_count"] or 0
+    status = row["status"]
+
+    if status in ("taken", "missed", "no_response"):
+        conn.close()
+        return {
+            "action": "already_final",
+            "status": status,
+        }
 
     if snooze_count >= 1:
         conn.close()
@@ -1100,7 +1226,14 @@ def snooze_dose(dose_id: int, snooze_minutes: int):
             snoozed_until = ?,
             last_updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
+          AND status IN ('pending', 'snoozed')
     """, (snoozed_until, dose_id))
+
+    if cursor.rowcount == 0:
+        conn.close()
+        return {
+            "action": "not_updated",
+        }
 
     conn.commit()
     conn.close()
@@ -1109,8 +1242,7 @@ def snooze_dose(dose_id: int, snooze_minutes: int):
         "action": "snoozed",
         "snoozed_until": snoozed_until,
     }
-
-
+#==============================================================================================
 def insert_adherence_log(
     dose_id: int,
     elder_id: int,
@@ -1196,6 +1328,123 @@ def get_elder_caregiver_id(elder_id: int):
     conn.close()
     return row["caregiver_id"] if row else None
 
+
+
+def auto_mark_expired_doses_for_caregiver(caregiver_id: int):
+    """
+    Auto-mark old pending/snoozed doses as missed for all elders under a caregiver.
+
+    This covers the case where the elder did not open the app or did not reach
+    the Dose Alert screen, so /adherence/no-response was never called.
+    """
+    from datetime import datetime, timedelta
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    cutoff_time = (now - timedelta(minutes=10)).strftime("%H:%M")
+
+    cursor.execute("""
+        SELECT
+            md.id,
+            md.elder_id,
+            md.elder_medication_id,
+            md.status,
+            md.scheduled_time,
+            md.snoozed_until,
+            e.caregiver_id
+        FROM medication_doses md
+        JOIN elders e ON md.elder_id = e.id
+        WHERE e.caregiver_id = ?
+          AND md.dose_date = ?
+          AND (
+              (md.status = 'pending' AND md.scheduled_time < ?)
+              OR
+              (md.status = 'snoozed'
+               AND md.snoozed_until IS NOT NULL
+               AND md.snoozed_until < ?)
+          )
+    """, (caregiver_id, today, cutoff_time, cutoff_time))
+
+    expired_doses = cursor.fetchall()
+    updated_count = 0
+
+    for dose in expired_doses:
+        cursor.execute("""
+            UPDATE medication_doses
+            SET
+                status = 'missed',
+                missed_at = CURRENT_TIMESTAMP,
+                last_updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND status IN ('pending', 'snoozed')
+        """, (dose["id"],))
+
+        if cursor.rowcount <= 0:
+            continue
+
+        updated_count += 1
+
+        cursor.execute("""
+            INSERT INTO adherence_logs (
+                dose_id,
+                elder_id,
+                elder_medication_id,
+                status,
+                event_type,
+                event_time,
+                snooze_minutes,
+                note
+            )
+            VALUES (?, ?, ?, 'missed', 'missed', CURRENT_TIMESTAMP, NULL, ?)
+        """, (
+            dose["id"],
+            dose["elder_id"],
+            dose["elder_medication_id"],
+            "Auto marked as missed when caregiver checked missed doses.",
+        ))
+
+        cursor.execute("""
+            SELECT id
+            FROM caregiver_alerts
+            WHERE caregiver_id = ?
+              AND elder_id = ?
+              AND dose_id = ?
+              AND alert_type = 'missed_dose'
+            LIMIT 1
+        """, (
+            dose["caregiver_id"],
+            dose["elder_id"],
+            dose["id"],
+        ))
+
+        existing_alert = cursor.fetchone()
+
+        if existing_alert is None:
+            cursor.execute("""
+                INSERT INTO caregiver_alerts (
+                    caregiver_id,
+                    elder_id,
+                    dose_id,
+                    alert_type,
+                    message,
+                    source
+                )
+                VALUES (?, ?, ?, 'missed_dose', ?, 'system')
+            """, (
+                dose["caregiver_id"],
+                dose["elder_id"],
+                dose["id"],
+                "كبير السن لم يتناول الجرعة بعد انتهاء مهلة الاستجابة",
+            ))
+
+    conn.commit()
+    conn.close()
+
+    return updated_count
+
 #تعديل بسيط على الجرعات المتأخرة
 def get_missed_doses_for_caregiver(caregiver_id: int):
     """Return today's missed/no_response doses for all elders under this caregiver."""
@@ -1233,16 +1482,24 @@ def get_missed_doses_for_caregiver(caregiver_id: int):
 
 
 def get_weekly_adherence_summary(elder_id: int):
-    """Return weekly adherence data using the latest adherence log per dose."""
+    """Return current week adherence data from Sunday to Saturday."""
     from datetime import datetime, timedelta
 
     conn = get_connection()
     cursor = conn.cursor()
 
     today = datetime.now().date()
-    week_start = today - timedelta(days=6)
+
+    # Python weekday:
+    # Monday = 0, Tuesday = 1, ..., Sunday = 6
+    # We want the week to start on Sunday.
+    days_since_sunday = (today.weekday() + 1) % 7
+
+    week_start = today - timedelta(days=days_since_sunday)
+    week_end = week_start + timedelta(days=6)
+
     week_start_str = week_start.strftime("%Y-%m-%d")
-    today_str = today.strftime("%Y-%m-%d")
+    week_end_str = week_end.strftime("%Y-%m-%d")
 
     cursor.execute("""
         WITH latest_logs AS (
@@ -1272,7 +1529,7 @@ def get_weekly_adherence_summary(elder_id: int):
         WHERE md.elder_id = ?
           AND md.dose_date BETWEEN ? AND ?
         ORDER BY md.dose_date ASC, md.scheduled_time ASC
-    """, (elder_id, week_start_str, today_str))
+    """, (elder_id, week_start_str, week_end_str))
 
     rows = cursor.fetchall()
     conn.close()
@@ -1286,6 +1543,7 @@ def get_weekly_adherence_summary(elder_id: int):
     }
 
     daily_map = {}
+
     for i in range(7):
         day = (week_start + timedelta(days=i)).strftime("%Y-%m-%d")
         daily_map[day] = {
@@ -1324,13 +1582,14 @@ def get_weekly_adherence_summary(elder_id: int):
                 }
 
             missed_map[key]["miss_count"] += 1
+
             missed_doses.append({
-                    "brand_name_ar": row["brand_name_ar"] or "دواء",
-                    "med_category": row["med_category"] or "",
-                    "dose_date": row["dose_date"],
-                    "scheduled_time": row["scheduled_time"],
-                    "status": status,
-                })
+                "brand_name_ar": brand_name,
+                "med_category": med_category,
+                "dose_date": row["dose_date"],
+                "scheduled_time": row["scheduled_time"],
+                "status": status,
+            })
 
     total = sum(counts.values())
     taken = counts["taken"]
@@ -1347,12 +1606,13 @@ def get_weekly_adherence_summary(elder_id: int):
     return {
         "elder_id": elder_id,
         "week_start": week_start_str,
-        "week_end": today_str,
+        "week_end": week_end_str,
         "total_doses": total,
         "taken": taken,
         "missed": counts["missed"],
         "snoozed": counts["snoozed"],
         "no_response": counts["no_response"],
+        "pending": counts["pending"],
         "adherence_percentage": adherence_pct,
         "most_missed_medications": most_missed,
         "daily_overview": daily_overview,

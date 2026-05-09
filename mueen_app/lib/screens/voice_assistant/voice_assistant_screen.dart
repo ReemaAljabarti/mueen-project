@@ -451,14 +451,24 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // زر الإغلاق (يسار في RTL = يمين فعلياً)
-          _CloseButton(onTap: onClose),
-          // اسم التطبيق
-          Text('معين', style: _AppTextStyles.appTitle),
-        ],
+      child: SizedBox(
+        height: 48,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // زر الإغلاق في جهة اليسار دائماً
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _CloseButton(onTap: onClose),
+            ),
+
+            // اسم التطبيق في جهة اليمين دائماً
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('معين', style: _AppTextStyles.appTitle),
+            ),
+          ],
+        ),
       ),
     );
   }

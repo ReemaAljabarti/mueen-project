@@ -4,13 +4,16 @@ import 'package:http/http.dart' as http;
 import '../models/elder.dart';
 import '../models/medication.dart';
 import '../models/elder_medication.dart';
+import '../models/dose.dart'; //  جديد عشان للجرعات اليومية
 
 class ApiService {
   // Android emulator:
   // static const String baseUrl = 'http://10.0.2.2:8001';
 
-  // Real device:
+  // Real device: منزل
   static const String baseUrl = 'http://192.168.1.14:8001';
+
+  //static const String baseUrl = 'http://172.20.10.7:8001';// Real device: الجامعة
 
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,
@@ -355,6 +358,60 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// GET /reminders/today/{elderId}
+  ///
+  /// Loads all medication doses scheduled for today.
+  ///
+  /// This is used by the elder home screen to display the daily dose timeline.
+  /// Each dose includes its real status, such as:
+  /// pending, taken, missed, or snoozed.
+  static Future<List<Dose>> getTodayDoses({
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/reminders/today/$elderId');
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load today doses: ${response.body}');
+    }
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    final List<dynamic> doses = data['today_doses'] as List<dynamic>? ?? [];
+
+    return doses.map((item) {
+      return Dose.fromJson(item as Map<String, dynamic>);
+    }).toList();
+  }
+
+  /// GET /reminders/next-dose/{elderId}
+  ///
+  /// Loads only the next actual dose for the elder.
+  ///
+  /// This is used by the elder home screen to show one upcoming dose only,
+  /// not the full medication schedule.
+  /// If the next dose is snoozed, the backend returns it as the next dose.
+  static Future<Dose?> getNextDose({
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/reminders/next-dose/$elderId');
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load next dose: ${response.body}');
+    }
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (data['found'] != true || data['next_dose'] == null) {
+      return null;
+    }
+
+    return Dose.fromJson(data['next_dose'] as Map<String, dynamic>);
+  }
+
   /// POST /adherence/taken
   /// Marks a dose as taken and logs it.
   static Future<void> markDoseTaken({
@@ -477,7 +534,8 @@ class ApiService {
 
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
-    static Future<Map<String, dynamic>> generateTodayDoses({
+
+  static Future<Map<String, dynamic>> generateTodayDoses({
     required int elderId,
   }) async {
     final url = Uri.parse('$baseUrl/reminders/generate-today/$elderId');

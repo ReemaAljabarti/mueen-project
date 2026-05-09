@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/elder.dart';
@@ -19,14 +21,34 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
   int totalMissedToday = 0;
   List<Map<String, dynamic>> missedDoses = [];
   Map<int, int> missedCountByElderId = {};
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     loadElders();
+
+    // Refresh caregiver missed-dose alerts automatically during testing.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      loadElders(showLoading: false);
+    });
   }
 
-  Future<void> loadElders() async {
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> loadElders({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+    }
+
     try {
       if (currentCaregiver == null || currentCaregiver!['id'] == null) {
         setState(() {
@@ -72,10 +94,14 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
         errorMessage = null;
       });
     } catch (e) {
-      setState(() {
-        errorMessage = 'تعذر تحميل كبار السن';
-        isLoading = false;
-      });
+      if (!mounted) return;
+
+      if (showLoading) {
+        setState(() {
+          errorMessage = 'تعذر تحميل كبار السن';
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -99,137 +125,201 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
 
     return '$greeting $caregiverName';
   }
+  //========================================
 
   void _showMissedDosesSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
+        final bool showScrollHint = missedDoses.length >= 4;
+
         return Directionality(
           textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: missedDoses.isEmpty
-                ? const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(height: 12),
-                      Icon(
-                        Icons.check_circle_outline,
-                        color: AppColors.primary,
-                        size: 40,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'لا توجد جرعات فائتة اليوم',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Tajawal',
+          child: SafeArea(
+            top: false,
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.78,
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: missedDoses.isEmpty
+                  ? const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: 8),
+                        Icon(
+                          Icons.check_circle_outline,
+                          color: AppColors.primary,
+                          size: 40,
                         ),
-                      ),
-                      SizedBox(height: 16),
-                    ],
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'الجرعات الفائتة اليوم',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Tajawal',
+                        SizedBox(height: 12),
+                        Text(
+                          'لا توجد جرعات فائتة اليوم',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Tajawal',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      ...missedDoses.map((dose) {
-                        final elderName =
-                            dose['elder_name']?.toString() ?? 'كبير السن';
-                        final medName =
-                            dose['medication_name']?.toString() ?? 'دواء';
-                        final scheduledTime =
-                            dose['scheduled_time']?.toString() ?? '';
-                        final status = dose['status']?.toString() ?? '';
-
-                        final statusText =
-                            status == 'no_response' ? 'لم يستجب' : 'فائتة';
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppColors.warning,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: AppColors.warningText.withOpacity(0.2),
+                        SizedBox(height: 16),
+                      ],
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 44,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(99),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'الجرعات الفائتة اليوم',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Tajawal',
+                          ),
+                        ),
+                        if (showScrollHint) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              textDirection: TextDirection.rtl,
+                              children: [
+                                Text(
+                                  'مرري للأسفل لعرض باقي الجرعات',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                    fontFamily: 'Tajawal',
+                                  ),
                                 ),
-                                child: const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: AppColors.warningText,
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: Colors.grey.shade600,
                                   size: 20,
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: missedDoses.length,
+                            itemBuilder: (context, index) {
+                              final dose = missedDoses[index];
+
+                              final elderName =
+                                  dose['elder_name']?.toString() ?? 'كبير السن';
+                              final medName =
+                                  dose['medication_name']?.toString() ?? 'دواء';
+                              final scheduledTime =
+                                  dose['scheduled_time']?.toString() ?? '';
+                              final status = dose['status']?.toString() ?? '';
+
+                              final statusText = status == 'no_response'
+                                  ? 'لم يستجب'
+                                  : 'فائتة';
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color:
+                                        AppColors.warningText.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Row(
                                   children: [
-                                    Text(
-                                      elderName,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Tajawal',
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: const Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: AppColors.warningText,
+                                        size: 22,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      medName,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontFamily: 'Tajawal',
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'الوقت: $scheduledTime • $statusText',
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
-                                        fontFamily: 'Tajawal',
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            elderName,
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              fontFamily: 'Tajawal',
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            medName,
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontFamily: 'Tajawal',
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'الوقت: $scheduledTime • $statusText',
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 12,
+                                              fontFamily: 'Tajawal',
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
-                        );
-                      }),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         );
       },
     );
   }
+  //========================================
 
   @override
   Widget build(BuildContext context) {

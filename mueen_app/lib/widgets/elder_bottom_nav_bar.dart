@@ -38,50 +38,79 @@ class ElderBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Color(0xFFE5E7EB), width: 2),
-        ),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        backgroundColor: Colors.white,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: Colors.grey,
-        selectedLabelStyle: const TextStyle(
-          fontFamily: 'Tajawal',
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontFamily: 'Tajawal',
-          fontSize: 14,
-        ),
-        elevation: 0,
-        onTap: (index) => _onItemTapped(context, index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'الرئيسية',
+    return Directionality(
+      // Keep the bottom navigation order the same on all elder screens.
+      textDirection: TextDirection.ltr,
+      child: Container(
+        height: 92,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: Color(0xFFE5E7EB), width: 2),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.medication_outlined),
-            activeIcon: Icon(Icons.medication),
-            label: 'الأدوية',
+        ),
+        child: BottomNavigationBar(
+          currentIndex: currentIndex,
+          backgroundColor: Colors.white,
+          selectedItemColor: AppColors.primary,
+          unselectedItemColor: Colors.grey,
+          selectedFontSize: 17,
+          unselectedFontSize: 16,
+          iconSize: 32,
+          selectedLabelStyle: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontWeight: FontWeight.bold,
+            fontSize: 17,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'الإعدادات',
+          unselectedLabelStyle: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
           ),
-        ],
+          elevation: 0,
+          type: BottomNavigationBarType.fixed,
+          onTap: (index) => _onItemTapped(context, index),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.home_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.home),
+              ),
+              label: 'الرئيسية',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.medication_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.medication),
+              ),
+              label: 'الأدوية',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.settings_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.settings),
+              ),
+              label: 'الإعدادات',
+            ),
+          ],
+        ),
       ),
     );
   }
 
+//====================================
   void _onItemTapped(BuildContext context, int index) {
     // النقر على الزر النشط لا يفعل شيئاً — تجنب إعادة بناء الشاشة
     if (index == currentIndex) return;

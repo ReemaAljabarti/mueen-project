@@ -12,6 +12,9 @@ import 'package:flutter/material.dart';
 import '../models/elder.dart';
 import '../theme/app_theme.dart';
 import '../widgets/elder_bottom_nav_bar.dart';
+// لايقاف استيراد Dose و CurrentElder و DoseAlertService — لا تُستخدم في هذه الشاشة
+import '../services/current_elder.dart';
+import '../services/dose_alert_service.dart';
 
 class ElderSettingsScreen extends StatefulWidget {
   const ElderSettingsScreen({super.key});
@@ -199,11 +202,17 @@ class _ElderSettingsScreenState extends State<ElderSettingsScreen> {
   Widget _buildLogoutCard(BuildContext context) {
     return GestureDetector(
       // تسجيل الخروج: الحالة الوحيدة التي نستخدم فيها pushNamedAndRemoveUntil
-      onTap: () => Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/role-selection',
-        (route) => false,
-      ),
+      onTap: () {
+        // Stop dose alerts when the elder logs out.
+        DoseAlertService.stop();
+        currentElder = null;
+
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/role-selection',
+          (route) => false,
+        );
+      },
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(

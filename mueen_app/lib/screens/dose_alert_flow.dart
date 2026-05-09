@@ -265,6 +265,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
 
   // Flow
   bool _showSummary = false;
+  bool _isFlowFinished = false;
 
   // Elder reference (passed as route argument)
   Elder? _elder;
@@ -320,14 +321,38 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   /// Convert a raw Map (from backend) to MedicationDose
   MedicationDose _doseFromMap(Map<String, dynamic> m) {
     final displayName = m['display_name_for_elder']?.toString();
+
     final brandNameAr = m['brand_name_ar']?.toString() ??
         m['medication_name']?.toString() ??
         '';
+
     final medCategory = m['med_category']?.toString() ?? '';
 
     final dosageAmount = m['dosage_amount']?.toString() ?? '';
     final dosageUnit = m['dosage_unit']?.toString() ?? '';
     final quantity = '$dosageAmount $dosageUnit'.trim();
+
+    final statusText = m['status']?.toString() ?? 'pending';
+    final snoozeCount = int.tryParse(m['snooze_count']?.toString() ?? '0') ?? 0;
+
+    DoseStatus parsedStatus;
+
+    switch (statusText) {
+      case 'taken':
+        parsedStatus = DoseStatus.taken;
+        break;
+      case 'missed':
+        parsedStatus = DoseStatus.missed;
+        break;
+      case 'snoozed':
+        parsedStatus = DoseStatus.snoozed;
+        break;
+      case 'no_response':
+        parsedStatus = DoseStatus.noResponse;
+        break;
+      default:
+        parsedStatus = DoseStatus.pending;
+    }
 
     return MedicationDose(
       id: m['dose_id']?.toString() ??
@@ -342,13 +367,16 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       genericName: m['generic_name_en']?.toString() ?? '',
       strength: m['dosage_strength']?.toString() ?? '',
       quantity: quantity,
-      route: m['route_ar']?.toString() ?? 'عن طريق الفم',
+      route: m['route_ar']?.toString() ?? '',
       usageInstruction: m['usage_instruction']?.toString() ?? '',
       foodInstruction: m['food_guide_ar']?.toString() ?? '',
       gtin: m['gtin']?.toString(),
+      status: parsedStatus,
+      hasBeenSnoozed: snoozeCount > 0 || parsedStatus == DoseStatus.snoozed,
     );
   }
 
+//============================================================================
   @override
   void dispose() {
     _timer?.cancel();
@@ -550,19 +578,34 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     });
   }
 
-  void _handleTimerExpiration() {
+  //====================================================================
+  void _finishFlow({bool timerExpired = false}) {
+    _timer?.cancel();
+
+    if (!mounted) return;
+
     setState(() {
-      _isTimerExpired = true;
+      _isFlowFinished = true;
+      _isTimerExpired = timerExpired;
       _showSummary = true;
-      for (final dose in _doses) {
-        if (dose.status == DoseStatus.pending) {
-          dose.status = DoseStatus.noResponse;
-          _apiNoResponse(dose);
-        }
-      }
     });
   }
+  //==================================================================
 
+  void _handleTimerExpiration() {
+    if (_isFlowFinished || _showSummary) return;
+
+    for (final dose in _doses) {
+      if (dose.status == DoseStatus.pending) {
+        dose.status = DoseStatus.noResponse;
+        _apiNoResponse(dose);
+      }
+    }
+
+    _finishFlow(timerExpired: true);
+  }
+
+//========================================
   String _formatTime(int seconds) {
     final m = seconds ~/ 60;
     final s = (seconds % 60).toString().padLeft(2, '0');
@@ -591,12 +634,15 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   /// Called after the user responds to the current dose.
   /// Moves to the next pending dose, or shows the summary when all are done.
   void _moveToNextDose() {
+    if (_isFlowFinished) return;
+
     if (_allDosesCompleted()) {
-      setState(() => _showSummary = true);
+      _finishFlow();
       return;
     }
 
     final nextPending = _findNextPendingDoseIndex();
+
     if (nextPending != null) {
       setState(() => _currentIndex = nextPending);
 
@@ -604,8 +650,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
         _speakShortReminder();
       });
     } else {
-      // Defensive fallback — should not be reached
-      setState(() => _showSummary = true);
+      _finishFlow();
     }
   }
 
@@ -623,7 +668,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
               ? _SummaryScreen(
                   doses: _doses,
                   isTimerExpired: _isTimerExpired,
-                  onGoHome: () => Navigator.maybePop(context),
+                  onGoHome: () => Navigator.pop(context, true),
                 )
               : _ActiveScreen(
                   doses: _doses,
@@ -753,39 +798,57 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       ),
     );
   }
+  //====================================================================
 
   void _handleSnoozeSelected(int minutes) {
     final dose = _doses[_currentIndex];
 
     if (dose.hasBeenSnoozed) {
-      // Snooze not allowed again
-      dose.status = DoseStatus.missed;
-      _apiConfirmMissed(dose, reason: 'repeated_snooze_attempt');
-      _showResultCard(
-        title: 'تم تأجيل هذه الجرعة مسبقًا',
-        subtitle:
-            'لا يمكن تأجيل نفس الجرعة مرة أخرى\nتم تسجيل الجرعة كغير مأخوذة وسيتم إشعار مقدم الرعاية',
-        icon: Icons.block_rounded,
-        iconBgColor: _C.dangerBg,
-        iconColor: _C.danger,
-        onDismiss: _moveToNextDose,
-      );
-    } else {
-      dose.status = DoseStatus.snoozed;
-      dose.hasBeenSnoozed = true;
-      dose.snoozeMinutes = minutes;
-      _apiConfirmSnooze(dose, minutes);
-      _showResultCard(
-        title: 'تم تأجيل التذكير',
-        subtitle: 'سيتم تذكيرك في الوقت المحدد',
-        icon: Icons.access_time_filled_rounded,
-        iconBgColor: _C.snoozeBg,
-        iconColor: _C.warning,
-        onDismiss: _moveToNextDose,
-      );
+      _showRepeatedSnoozeConfirmDialog(dose);
+      return;
     }
+
+    dose.status = DoseStatus.snoozed;
+    dose.hasBeenSnoozed = true;
+    dose.snoozeMinutes = minutes;
+
+    _apiConfirmSnooze(dose, minutes);
+
+    _showResultCard(
+      title: 'تم تأجيل التذكير',
+      subtitle: 'سيتم تذكيرك في الوقت المحدد',
+      icon: Icons.access_time_filled_rounded,
+      iconBgColor: _C.snoozeBg,
+      iconColor: _C.warning,
+      onDismiss: _moveToNextDose,
+    );
   }
 
+//====================================================================
+  void _showRepeatedSnoozeConfirmDialog(MedicationDose dose) {
+    _showConfirmDialog(
+      title: 'لا يمكن تأجيل هذه الجرعة مرة أخرى',
+      subtitle: 'تم تأجيل هذه الجرعة مسبقًا. هل تريد تسجيلها كجرعة فائتة؟',
+      icon: Icons.block_rounded,
+      iconBgColor: _C.dangerBg,
+      iconColor: _C.danger,
+      onConfirm: () {
+        dose.status = DoseStatus.missed;
+        _apiConfirmMissed(dose, reason: 'repeated_snooze_attempt');
+
+        _showResultCard(
+          title: 'تم تبليغ مقدم الرعاية',
+          subtitle: 'تم اعتبار الجرعة فائتة\nوسيتم الانتقال إلى الجرعة التالية',
+          icon: Icons.notifications_active_rounded,
+          iconBgColor: _C.successBg,
+          iconColor: _C.primary,
+          onDismiss: _moveToNextDose,
+        );
+      },
+    );
+  }
+
+//=====================================================================
   void _showConfirmDialog({
     required String title,
     required String subtitle,
@@ -1276,35 +1339,12 @@ class _MedicationCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Name + Audio Icon
-                Row(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GestureDetector(
-                      onTap: onSpeakDoseDetails,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _C.primary,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.volume_up_rounded,
-                          color: _C.white,
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(dose.displayTitle, style: _T.cardTitle),
-                          const SizedBox(height: 4),
-                          Text(dose.displaySubtitle, style: _T.subtitle),
-                        ],
-                      ),
-                    ),
+                    Text(dose.displayTitle, style: _T.cardTitle),
+                    const SizedBox(height: 4),
+                    Text(dose.displaySubtitle, style: _T.subtitle),
                   ],
                 ),
 

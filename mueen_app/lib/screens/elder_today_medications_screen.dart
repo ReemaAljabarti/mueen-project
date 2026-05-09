@@ -6,10 +6,14 @@
 //   1. displayNameForElder موجود → يُعرض كما هو
 //   2. displayNameForElder فارغ + medCategory موجود → "دواء {medCategory}"
 //   3. كلاهما فارغان → brandNameAr مباشرة
+//
+// ملاحظة مهمة:
+//   هذه الشاشة تعرض جرعات اليوم الفعلية فقط من medication_doses
+//   وليست خطة الأدوية العامة من elder_medications.
 
 import 'package:flutter/material.dart';
 import '../models/elder.dart';
-import '../models/elder_medication.dart';
+import '../models/dose.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -33,7 +37,7 @@ class _ElderTodayMedicationsScreenState
   bool _initialized = false;
   bool _isLoading = true;
   String? _errorMessage;
-  List<ElderMedication> _allMedications = [];
+  List<Dose> _allDoses = [];
   _FilterTab _activeFilter = _FilterTab.all;
 
   // ── دورة الحياة ───────────────────────────────────────────────────────────
@@ -76,15 +80,23 @@ class _ElderTodayMedicationsScreenState
 
     try {
       debugPrint(
-          '[TodayMeds] 🌐 Fetching medications for elder id=${_elder!.id}');
-      final meds =
-          await ApiService.getElderMedications(elderId: _elder!.id!);
+          '[TodayMeds] 🌐 Fetching today doses for elder id=${_elder!.id}');
 
-      meds.sort((a, b) => a.firstReminderTime.compareTo(b.firstReminderTime));
+      // Ensure today's dose records exist before loading this screen.
+      // The backend prevents duplicate doses, so calling this again is safe.
+      await ApiService.generateTodayDoses(elderId: _elder!.id!);
 
-      debugPrint('[TodayMeds] ✅ Loaded ${meds.length} medications');
+      final doses = await ApiService.getTodayDoses(elderId: _elder!.id!);
+
+      doses.sort((a, b) {
+        final aMinutes = _parseTimeToMinutes(a.effectiveTime) ?? 0;
+        final bMinutes = _parseTimeToMinutes(b.effectiveTime) ?? 0;
+        return aMinutes.compareTo(bMinutes);
+      });
+
+      debugPrint('[TodayMeds] ✅ Loaded ${doses.length} today doses');
       setState(() {
-        _allMedications = meds;
+        _allDoses = doses;
         _isLoading = false;
       });
     } catch (e) {
@@ -97,34 +109,50 @@ class _ElderTodayMedicationsScreenState
   }
 
   // ── منطق التصفية ──────────────────────────────────────────────────────────
-  List<ElderMedication> get _filteredMedications {
+  List<Dose> get _filteredDoses {
     switch (_activeFilter) {
       case _FilterTab.morning:
-        return _allMedications.where(_isMorning).toList();
+        return _allDoses.where(_isMorning).toList();
       case _FilterTab.evening:
-        return _allMedications.where((m) => !_isMorning(m)).toList();
+        return _allDoses.where((d) => !_isMorning(d)).toList();
       case _FilterTab.all:
-        return _allMedications;
+        return _allDoses;
     }
   }
 
-  List<ElderMedication> get _morningMedications =>
-      _filteredMedications.where(_isMorning).toList();
+  List<Dose> get _morningDoses => _filteredDoses.where(_isMorning).toList();
 
-  List<ElderMedication> get _eveningMedications =>
-      _filteredMedications.where((m) => !_isMorning(m)).toList();
+  List<Dose> get _eveningDoses =>
+      _filteredDoses.where((d) => !_isMorning(d)).toList();
 
-  bool _isMorning(ElderMedication med) {
-    try {
-      final t = med.firstReminderTime;
-      if (t.contains('م')) return false;
-      if (t.contains('ص')) return true;
-      final parts = t.split(':');
-      final hour = int.parse(parts[0]);
-      return hour < 12;
-    } catch (_) {
-      return true;
+  bool _isMorning(Dose dose) {
+    final minutes = _parseTimeToMinutes(dose.effectiveTime);
+    if (minutes == null) return true;
+    return minutes < 12 * 60;
+  }
+
+  int? _parseTimeToMinutes(String timeStr) {
+    final arabicMatch =
+        RegExp(r'(\d{1,2}):(\d{2})\s*([صم])').firstMatch(timeStr);
+    if (arabicMatch != null) {
+      int hour = int.parse(arabicMatch.group(1)!);
+      final minute = int.parse(arabicMatch.group(2)!);
+      final period = arabicMatch.group(3)!;
+
+      if (period == 'م' && hour != 12) hour += 12;
+      if (period == 'ص' && hour == 12) hour = 0;
+
+      return hour * 60 + minute;
     }
+
+    final isoMatch = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(timeStr);
+    if (isoMatch != null) {
+      final hour = int.parse(isoMatch.group(1)!);
+      final minute = int.parse(isoMatch.group(2)!);
+      return hour * 60 + minute;
+    }
+
+    return null;
   }
 
   // ── تنسيق الوقت — لا يُضاف ص/م مرتين ─────────────────────────────────────
@@ -152,15 +180,14 @@ class _ElderTodayMedicationsScreenState
   // 2. displayNameForElder فارغ + medCategory موجود → "دواء {medCategory}"
   //    (إذا كانت medCategory تبدأ بـ "دواء" لا يُضاف مرة أخرى)
   // 3. كلاهما فارغان → brandNameAr مباشرة (بدون "دواء" عام)
-  String _getMedicationDisplayName(ElderMedication med) {
-    // 1. displayNameForElder
-    final custom = med.displayNameForElder;
-    if (custom != null && custom.trim().isNotEmpty) {
-      return custom.trim();
+  String _getMedicationDisplayName(Dose dose) {
+    // 1. displayNameForElder / medicationName from backend
+    if (dose.medicationName.trim().isNotEmpty) {
+      return dose.medicationName.trim();
     }
 
     // 2. medCategory مع بادئة "دواء"
-    final category = med.medCategory;
+    final category = dose.medCategory;
     if (category != null && category.trim().isNotEmpty) {
       final cleanCategory = category.trim();
       // تجنب التكرار: إذا كانت الفئة تبدأ بـ "دواء" لا نُضيفها مرة أخرى
@@ -171,7 +198,7 @@ class _ElderTodayMedicationsScreenState
     }
 
     // 3. fallback: brandNameAr مباشرة (بدون "دواء" عام)
-    return med.brandNameAr;
+    return dose.brandNameAr;
   }
 
   // ── صورة الدواء — نفس منطق ElderHomeScreen ────────────────────────────────
@@ -226,10 +253,21 @@ class _ElderTodayMedicationsScreenState
       backgroundColor: Colors.white,
       elevation: 0,
       centerTitle: true,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_forward_ios, color: Colors.black),
-        onPressed: () => Navigator.pop(context),
-      ),
+      automaticallyImplyLeading: false,
+
+      // Keep the back icon on the left side of the header.
+      // In RTL screens, actions appear on the left.
+      actions: [
+        IconButton(
+          // Keep the icon on the left, and force the arrow head to point left.
+          icon: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()..scale(-1.0, 1.0),
+            child: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ],
       title: const Text(
         'الأدوية',
         style: TextStyle(
@@ -310,7 +348,7 @@ class _ElderTodayMedicationsScreenState
       return _buildErrorState(_errorMessage!);
     }
 
-    if (_filteredMedications.isEmpty) {
+    if (_filteredDoses.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -320,39 +358,39 @@ class _ElderTodayMedicationsScreenState
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         children: [
-          if (_morningMedications.isNotEmpty) ...[
+          if (_morningDoses.isNotEmpty) ...[
             _buildSectionHeader(
               title: 'أدوية الصباح',
               subtitle: '6:00 ص - 12:00 م',
             ),
             const SizedBox(height: 16),
-            ..._morningMedications.map(
-              (med) => Padding(
+            ..._morningDoses.map(
+              (dose) => Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _MedicationCard(
-                  medication: med,
-                  displayName: _getMedicationDisplayName(med),
-                  formattedTime: _formatTime(med.firstReminderTime),
-                  medIcon: _buildMedIcon(med.gtin),
+                  dose: dose,
+                  displayName: _getMedicationDisplayName(dose),
+                  formattedTime: _formatTime(dose.effectiveTime),
+                  medIcon: _buildMedIcon(dose.gtin),
                 ),
               ),
             ),
             const SizedBox(height: 8),
           ],
-          if (_eveningMedications.isNotEmpty) ...[
+          if (_eveningDoses.isNotEmpty) ...[
             _buildSectionHeader(
               title: 'أدوية المساء',
               subtitle: '12:00 م - 12:00 ص',
             ),
             const SizedBox(height: 16),
-            ..._eveningMedications.map(
-              (med) => Padding(
+            ..._eveningDoses.map(
+              (dose) => Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _MedicationCard(
-                  medication: med,
-                  displayName: _getMedicationDisplayName(med),
-                  formattedTime: _formatTime(med.firstReminderTime),
-                  medIcon: _buildMedIcon(med.gtin),
+                  dose: dose,
+                  displayName: _getMedicationDisplayName(dose),
+                  formattedTime: _formatTime(dose.effectiveTime),
+                  medIcon: _buildMedIcon(dose.gtin),
                 ),
               ),
             ),
@@ -404,7 +442,8 @@ class _ElderTodayMedicationsScreenState
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.medication_outlined, size: 72, color: Colors.grey.shade300),
+          Icon(Icons.medication_outlined,
+              size: 72, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           const Text(
             'لا توجد أدوية مجدولة لهذا اليوم',
@@ -445,8 +484,7 @@ class _ElderTodayMedicationsScreenState
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
             ),
             child: const Text(
               'إعادة المحاولة',
@@ -510,13 +548,13 @@ class _FilterButton extends StatelessWidget {
 // بطاقة الدواء
 // ════════════════════════════════════════════════════════════════════════════
 class _MedicationCard extends StatelessWidget {
-  final ElderMedication medication;
+  final Dose dose;
   final String displayName;
   final String formattedTime;
   final Widget medIcon;
 
   const _MedicationCard({
-    required this.medication,
+    required this.dose,
     required this.displayName,
     required this.formattedTime,
     required this.medIcon,
@@ -561,7 +599,7 @@ class _MedicationCard extends StatelessWidget {
           const SizedBox(height: 6),
           // ── brandNameAr دائماً كعنوان فرعي ──────────────────────────────
           Text(
-            medication.brandNameAr,
+            dose.brandNameAr,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFF6B7280),
@@ -589,73 +627,84 @@ class _MedicationCard extends StatelessWidget {
   }
 
   Widget _buildStatusBadge() {
-    final status = _computeStatus();
-
-    Color bgColor;
-    Color textColor;
-    String label;
-
-    switch (status) {
-      case _DoseStatus.taken:
-        bgColor = const Color(0xFFD4F5F9);
-        textColor = const Color(0xFF003948);
-        label = 'تم تناوله';
-        break;
-      case _DoseStatus.missed:
-        bgColor = const Color(0xFFF6E6C8);
-        textColor = const Color(0xFF663C00);
-        label = 'فائت';
-        break;
-      case _DoseStatus.pending:
-        bgColor = const Color(0xFFFFF3D6);
-        textColor = const Color(0xFF4A3200);
-        label = 'قيد الانتظار';
-        break;
-    }
+    final status = _statusInfo(dose.status);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: status.bgColor,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 18,
-          fontFamily: 'Tajawal',
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            status.icon,
+            color: status.textColor,
+            size: 22,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            status.label,
+            style: TextStyle(
+              color: status.textColor,
+              fontSize: 18,
+              fontFamily: 'Tajawal',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  _DoseStatus _computeStatus() {
-    try {
-      final now = DateTime.now();
-      var timeStr = medication.firstReminderTime
-          .replaceAll('ص', '')
-          .replaceAll('م', '')
-          .trim();
-      final parts = timeStr.split(':');
-      var hour = int.parse(parts[0]);
-      final minute = int.parse(parts.length > 1 ? parts[1] : '0');
-
-      if (medication.firstReminderTime.contains('م') && hour < 12) {
-        hour += 12;
-      }
-
-      final doseTime = DateTime(now.year, now.month, now.day, hour, minute);
-
-      if (now.isAfter(doseTime.add(const Duration(hours: 2)))) {
-        return _DoseStatus.missed;
-      }
-      return _DoseStatus.pending;
-    } catch (_) {
-      return _DoseStatus.pending;
+  _DoseStatusInfo _statusInfo(String status) {
+    switch (status) {
+      case 'taken':
+        return const _DoseStatusInfo(
+          label: 'تم الأخذ',
+          bgColor: Color(0xFFDFF7E8),
+          textColor: Color(0xFF166534),
+          icon: Icons.check_circle,
+        );
+      case 'missed':
+      case 'no_response':
+        return const _DoseStatusInfo(
+          label: 'فائتة',
+          bgColor: Color(0xFFFFF1E6),
+          textColor: Color(0xFFB45309),
+          icon: Icons.warning_amber_rounded,
+        );
+      case 'snoozed':
+        return const _DoseStatusInfo(
+          label: 'مؤجلة',
+          bgColor: Color(0xFFFFE8CC),
+          textColor: Color(0xFFB45309),
+          icon: Icons.schedule,
+        );
+      case 'pending':
+      default:
+        return const _DoseStatusInfo(
+          label: 'قيد الانتظار',
+          bgColor: Color(0xFFE0F7F8),
+          textColor: Color(0xFF0F7C83),
+          icon: Icons.access_time,
+        );
     }
   }
 }
 
-// ── تعداد حالات الجرعة ────────────────────────────────────────────────────
-enum _DoseStatus { taken, missed, pending }
+// ── بيانات عرض حالة الجرعة ────────────────────────────────────────────────
+class _DoseStatusInfo {
+  final String label;
+  final Color bgColor;
+  final Color textColor;
+  final IconData icon;
+
+  const _DoseStatusInfo({
+    required this.label,
+    required this.bgColor,
+    required this.textColor,
+    required this.icon,
+  });
+}
