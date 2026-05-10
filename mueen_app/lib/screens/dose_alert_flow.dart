@@ -17,8 +17,13 @@
 // ============================================================
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import '../services/api_service.dart';
 import '../models/elder.dart';
 import '../services/current_elder.dart';
@@ -1003,15 +1008,114 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
+  void _handleVoiceTakenConfirmed() {
+    if (!mounted) return;
+    if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[_currentIndex];
+
+    setState(() {
+      dose.status = DoseStatus.taken;
+    });
+
+    _showResultCard(
+      title: 'تم تأكيد أخذ الجرعة',
+      subtitle: 'تم التحديث عن طريق المساعد الصوتي',
+      icon: Icons.check_circle_rounded,
+      iconBgColor: _C.successBg,
+      iconColor: _C.primary,
+      onDismiss: _moveToNextDose,
+    );
+  }
+
+  void _handleVoiceMissedConfirmed() {
+    if (!mounted) return;
+    if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[_currentIndex];
+
+    setState(() {
+      dose.status = DoseStatus.missed;
+    });
+
+    _showResultCard(
+      title: 'تم تسجيل عدم تناول الجرعة',
+      subtitle: 'تم التحديث عن طريق المساعد الصوتي',
+      icon: Icons.warning_amber_rounded,
+      iconBgColor: _C.warningBg,
+      iconColor: _C.warning,
+      onDismiss: _moveToNextDose,
+    );
+  }
+
+  void _handleVoiceSnoozeConfirmed(int minutes) {
+    if (!mounted) return;
+    if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[_currentIndex];
+
+    setState(() {
+      dose.status = DoseStatus.snoozed;
+      dose.hasBeenSnoozed = true;
+      dose.snoozeMinutes = minutes;
+    });
+
+    _showResultCard(
+      title: 'تم تأجيل التذكير',
+      subtitle: 'تم التحديث عن طريق المساعد الصوتي',
+      icon: Icons.access_time_filled_rounded,
+      iconBgColor: _C.snoozeBg,
+      iconColor: _C.warning,
+      onDismiss: _moveToNextDose,
+    );
+  }
+
   void _showVoiceAssistantSheet() {
+    final elderId = _elder?.id ?? currentElder?.id;
+
+    if (elderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لا يمكن تشغيل المساعد الصوتي بدون بيانات كبير السن.',
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لا توجد جرعة حالية للتفاعل معها.',
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      // Use a StatefulWidget so the looping state machine lives inside the sheet
-      builder: (ctx) => const _VoiceAssistantBottomSheet(),
+      builder: (ctx) => _VoiceAssistantBottomSheet(
+        elderId: elderId,
+        currentDose: _doses[_currentIndex],
+        onTakenConfirmed: _handleVoiceTakenConfirmed,
+        onMissedConfirmed: _handleVoiceMissedConfirmed,
+        onSnoozeConfirmed: _handleVoiceSnoozeConfirmed,
+      ),
     );
   }
 }
@@ -1694,12 +1798,28 @@ class _SnoozeOptionButton extends StatelessWidget {
 // ---------------------------------------------------------------------------
 enum _VoiceState { listening, processing, responding }
 
+enum _VoiceDoseAction { taken, missed, snoozed }
+
 // ---------------------------------------------------------------------------
-// Bottom Sheet المساعد الصوتي الكامل
-// دورة تلقائية: listening(4s) → processing(2s) → responding(2s) → listening ...
+// Bottom Sheet المساعد الصوتي المرتبط بشاشة الجرعة
+// يعمل بنفس منطق شاشة المساعد:
+// listening → processing → responding → listening
+// وعند تأكيد الإجراء صوتيًا يحدّث شاشة الجرعة الحالية محليًا.
 // ---------------------------------------------------------------------------
 class _VoiceAssistantBottomSheet extends StatefulWidget {
-  const _VoiceAssistantBottomSheet();
+  final int elderId;
+  final MedicationDose currentDose;
+  final VoidCallback onTakenConfirmed;
+  final VoidCallback onMissedConfirmed;
+  final ValueChanged<int> onSnoozeConfirmed;
+
+  const _VoiceAssistantBottomSheet({
+    required this.elderId,
+    required this.currentDose,
+    required this.onTakenConfirmed,
+    required this.onMissedConfirmed,
+    required this.onSnoozeConfirmed,
+  });
 
   @override
   State<_VoiceAssistantBottomSheet> createState() =>
@@ -1708,29 +1828,37 @@ class _VoiceAssistantBottomSheet extends StatefulWidget {
 
 class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
     with TickerProviderStateMixin {
-  // Current voice state
   _VoiceState _voiceState = _VoiceState.listening;
 
-  // Timer that drives the automatic state cycle
-  Timer? _cycleTimer;
-
-  // Pulse animation (listening & responding)
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-
-  // Waveform animation (processing)
   late AnimationController _waveController;
 
-  // Durations for each state
-  static const _listeningDuration = Duration(seconds: 4);
-  static const _processingDuration = Duration(seconds: 2);
-  static const _respondingDuration = Duration(seconds: 2);
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _isRecording = false;
+  bool _actionCompleted = false;
+  String _assistantSpokenText = '';
+
+  _VoiceDoseAction? _pendingAction;
+  int? _pendingSnoozeMinutes;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('[DoseVoice] initState called');
+    debugPrint('[DoseVoice] elderId = ${widget.elderId}');
+    debugPrint('[DoseVoice] current dose id = ${widget.currentDose.id}');
+    debugPrint(
+        '[DoseVoice] current dose name = ${widget.currentDose.brandNameAr}');
+
     _initAnimations();
     _enterState(_VoiceState.listening);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startRecording();
+    });
   }
 
   void _initAnimations() {
@@ -1741,6 +1869,7 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
     _pulseAnimation = Tween<double>(begin: 0.92, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
     _waveController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -1748,40 +1877,411 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
   }
 
   void _enterState(_VoiceState state) {
-    _cycleTimer?.cancel();
+    if (!mounted) return;
+
     setState(() => _voiceState = state);
 
-    // Manage animations
     _pulseController.stop();
     _waveController.stop();
+
     switch (state) {
       case _VoiceState.listening:
         _pulseController.repeat(reverse: true);
-        _cycleTimer = Timer(
-            _listeningDuration, () => _enterState(_VoiceState.processing));
         break;
       case _VoiceState.processing:
         _waveController.repeat();
-        _cycleTimer = Timer(
-            _processingDuration, () => _enterState(_VoiceState.responding));
         break;
       case _VoiceState.responding:
         _pulseController.repeat(reverse: true);
-        _cycleTimer = Timer(
-            _respondingDuration, () => _enterState(_VoiceState.listening));
         break;
     }
   }
 
   @override
   void dispose() {
-    _cycleTimer?.cancel();
+    debugPrint('[DoseVoice] dispose called');
+    _recorder.dispose();
+    _audioPlayer.dispose();
     _pulseController.dispose();
     _waveController.dispose();
     super.dispose();
   }
 
-  // ---- State labels ----
+  Future<void> _startRecording() async {
+    debugPrint('[DoseVoice] _startRecording called');
+    debugPrint('[DoseVoice] _isRecording before start = $_isRecording');
+
+    if (_isRecording || _actionCompleted) {
+      debugPrint('[DoseVoice] start ignored');
+      return;
+    }
+
+    final hasPermission = await _recorder.hasPermission();
+    debugPrint('[DoseVoice] microphone permission = $hasPermission');
+
+    if (!hasPermission) {
+      _showMessage('لم يتم السماح باستخدام الميكروفون.');
+      return;
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final filePath =
+        '${tempDir.path}/dose_voice_input_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    debugPrint('[DoseVoice] recording path = $filePath');
+
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+      ),
+      path: filePath,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isRecording = true;
+      _voiceState = _VoiceState.listening;
+    });
+
+    _enterState(_VoiceState.listening);
+    debugPrint('[DoseVoice] recording started');
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    debugPrint('[DoseVoice] _stopRecordingAndSend called');
+    debugPrint('[DoseVoice] _isRecording before stop = $_isRecording');
+
+    if (!_isRecording || _actionCompleted) {
+      debugPrint('[DoseVoice] stop ignored');
+      return;
+    }
+
+    final path = await _recorder.stop();
+    debugPrint('[DoseVoice] stopped path = $path');
+
+    if (!mounted) return;
+
+    setState(() => _isRecording = false);
+    _enterState(_VoiceState.processing);
+
+    if (path == null) {
+      _showMessage('لم يتم تسجيل صوت واضح.');
+      await _startRecording();
+      return;
+    }
+
+    final audioFile = File(path);
+    final exists = await audioFile.exists();
+    final size = exists ? await audioFile.length() : 0;
+
+    debugPrint('[DoseVoice] recorded file exists = $exists');
+    debugPrint('[DoseVoice] recorded file size = $size bytes');
+
+    if (!exists || size <= 0) {
+      _showMessage('لم يتم تسجيل صوت واضح.');
+      await _startRecording();
+      return;
+    }
+
+    try {
+      final response = await _sendAudioToAssistant(audioFile);
+      debugPrint('[DoseVoice] response = $response');
+
+      final spokenText = response['spoken_text']?.toString() ?? '';
+
+      if (!mounted) return;
+
+      setState(() {
+        _assistantSpokenText = spokenText;
+      });
+
+      _trackPendingAction(response);
+
+      _enterState(_VoiceState.responding);
+
+      await _playBase64Audio(
+        audioBase64: response['audio_base64']?.toString() ?? '',
+        audioFormat: response['audio_format']?.toString() ?? 'mp3',
+      );
+
+      final completedAction = _detectCompletedAction(response);
+
+      if (completedAction != null) {
+        await _finishVoiceAction(completedAction);
+        return;
+      }
+
+      if (!mounted || _actionCompleted) return;
+
+      _enterState(_VoiceState.listening);
+      await _startRecording();
+    } catch (e, stackTrace) {
+      debugPrint('[DoseVoice] error = $e');
+      debugPrint('[DoseVoice] stackTrace = $stackTrace');
+
+      if (!mounted) return;
+
+      _showMessage('حدث خطأ أثناء تشغيل المساعد. حاول مرة أخرى.');
+      _enterState(_VoiceState.listening);
+      await _startRecording();
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendAudioToAssistant(File audioFile) async {
+    debugPrint('[DoseVoice] _sendAudioToAssistant called');
+
+    final uri = Uri.parse('${ApiService.baseUrl}/assistant/respond-audio');
+
+    debugPrint('[DoseVoice] uri = $uri');
+
+    final request = http.MultipartRequest('POST', uri);
+    request.fields['elder_id'] = widget.elderId.toString();
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        audioFile.path,
+      ),
+    );
+
+    debugPrint('[DoseVoice] sending request now');
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    debugPrint('[DoseVoice] status = ${response.statusCode}');
+    debugPrint('[DoseVoice] body = ${response.body}');
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Assistant request failed: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<void> _playBase64Audio({
+    required String audioBase64,
+    required String audioFormat,
+  }) async {
+    debugPrint('[DoseVoice] _playBase64Audio called');
+    debugPrint('[DoseVoice] audioBase64 length = ${audioBase64.length}');
+
+    if (audioBase64.isEmpty) {
+      return;
+    }
+
+    final bytes = base64Decode(audioBase64);
+    final tempDir = await getTemporaryDirectory();
+
+    final file = File(
+      '${tempDir.path}/dose_voice_response_${DateTime.now().millisecondsSinceEpoch}.$audioFormat',
+    );
+
+    await file.writeAsBytes(bytes, flush: true);
+
+    await _audioPlayer.stop();
+
+    final completer = Completer<void>();
+
+    late StreamSubscription<void> completeSubscription;
+    late StreamSubscription<PlayerState> stateSubscription;
+
+    completeSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      debugPrint('[DoseVoice] audio playback completed');
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    });
+
+    stateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+      debugPrint('[DoseVoice] audio player state = $state');
+
+      if (state == PlayerState.stopped && !completer.isCompleted) {
+        completer.complete();
+      }
+    });
+
+    await _audioPlayer.play(DeviceFileSource(file.path));
+    debugPrint('[DoseVoice] audio playback started');
+
+    await completer.future;
+
+    await completeSubscription.cancel();
+    await stateSubscription.cancel();
+  }
+
+  void _trackPendingAction(Map<String, dynamic> response) {
+    final intent = response['nlu_intent']?.toString() ?? '';
+    final combinedText = _combinedResponseText(response);
+
+    debugPrint('[DoseVoice] tracking intent = $intent');
+
+    if (intent == 'MarkDoseTaken') {
+      _pendingAction = _VoiceDoseAction.taken;
+      _pendingSnoozeMinutes = null;
+      debugPrint('[DoseVoice] pending action = taken');
+      return;
+    }
+
+    if (intent == 'MarkDoseMissed') {
+      _pendingAction = _VoiceDoseAction.missed;
+      _pendingSnoozeMinutes = null;
+      debugPrint('[DoseVoice] pending action = missed');
+      return;
+    }
+
+    if (intent == 'SnoozeMedication') {
+      _pendingAction = _VoiceDoseAction.snoozed;
+      _pendingSnoozeMinutes = _extractSnoozeMinutes(combinedText) ?? 15;
+      debugPrint(
+        '[DoseVoice] pending action = snoozed, minutes = $_pendingSnoozeMinutes',
+      );
+      return;
+    }
+
+    if (intent == 'Cancel') {
+      _pendingAction = null;
+      _pendingSnoozeMinutes = null;
+      debugPrint('[DoseVoice] pending action cleared by cancel');
+      return;
+    }
+  }
+
+  _VoiceDoseAction? _detectCompletedAction(Map<String, dynamic> response) {
+    final intent = response['nlu_intent']?.toString() ?? '';
+    final spokenText = response['spoken_text']?.toString() ?? '';
+    final dbResponse = response['db_response'];
+
+    debugPrint('[DoseVoice] detect completed action, intent = $intent');
+    debugPrint('[DoseVoice] pending action = $_pendingAction');
+
+    if (intent != 'Confirm' || _pendingAction == null) {
+      return null;
+    }
+
+    final statusText =
+        dbResponse is Map ? dbResponse['status']?.toString() : '';
+    final looksSuccessful = statusText == 'success' ||
+        spokenText.contains('تم') ||
+        spokenText.contains('تسجيل') ||
+        spokenText.contains('تأكيد') ||
+        spokenText.contains('تأجيل');
+
+    if (!looksSuccessful) {
+      debugPrint('[DoseVoice] confirm did not look successful');
+      return null;
+    }
+
+    return _pendingAction;
+  }
+
+  Future<void> _finishVoiceAction(_VoiceDoseAction action) async {
+    if (_actionCompleted) return;
+
+    _actionCompleted = true;
+
+    debugPrint('[DoseVoice] finishing action = $action');
+
+    if (_isRecording) {
+      await _recorder.stop();
+      _isRecording = false;
+    }
+
+    await _audioPlayer.stop();
+
+    if (!mounted) return;
+
+    Navigator.pop(context);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      switch (action) {
+        case _VoiceDoseAction.taken:
+          widget.onTakenConfirmed();
+          break;
+        case _VoiceDoseAction.missed:
+          widget.onMissedConfirmed();
+          break;
+        case _VoiceDoseAction.snoozed:
+          widget.onSnoozeConfirmed(_pendingSnoozeMinutes ?? 15);
+          break;
+      }
+    });
+  }
+
+  int? _extractSnoozeMinutes(String text) {
+    if (text.contains('15') ||
+        text.contains('١٥') ||
+        text.contains('خمسة عشر')) {
+      return 15;
+    }
+
+    if (text.contains('20') || text.contains('٢٠') || text.contains('عشرين')) {
+      return 20;
+    }
+
+    if (text.contains('30') || text.contains('٣٠') || text.contains('ثلاثين')) {
+      return 30;
+    }
+
+    return null;
+  }
+
+  String _combinedResponseText(Map<String, dynamic> response) {
+    return [
+      response['input_text']?.toString() ?? '',
+      response['spoken_text']?.toString() ?? '',
+      response.toString(),
+    ].join(' ');
+  }
+
+  Future<void> _handleMicTap() async {
+    debugPrint('[DoseVoice] mic tapped, state = $_voiceState');
+
+    if (_voiceState == _VoiceState.processing) {
+      return;
+    }
+
+    if (_voiceState == _VoiceState.listening) {
+      await _stopRecordingAndSend();
+      return;
+    }
+
+    if (_voiceState == _VoiceState.responding) {
+      await _audioPlayer.stop();
+      _enterState(_VoiceState.listening);
+      await _startRecording();
+    }
+  }
+
+  Future<void> _handleClose() async {
+    debugPrint('[DoseVoice] close tapped');
+
+    if (_isRecording) {
+      await _recorder.stop();
+      _isRecording = false;
+    }
+
+    await _audioPlayer.stop();
+
+    if (!mounted) return;
+
+    Navigator.pop(context);
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          textDirection: TextDirection.rtl,
+        ),
+      ),
+    );
+  }
+
   String get _stateTitle {
     switch (_voiceState) {
       case _VoiceState.listening:
@@ -1796,11 +2296,13 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
   String get _stateSubtitle {
     switch (_voiceState) {
       case _VoiceState.listening:
-        return 'تحدث الآن أو اطرح سؤالك';
+        return 'تحدث الآن، ثم اضغط المايك عند الانتهاء';
       case _VoiceState.processing:
         return 'يرجى الانتظار قليلاً';
       case _VoiceState.responding:
-        return 'يتم الآن تشغيل الرد الصوتي';
+        return _assistantSpokenText.isNotEmpty
+            ? _assistantSpokenText
+            : 'يتم الآن تشغيل الرد الصوتي';
     }
   }
 
@@ -1818,7 +2320,6 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Drag handle
                 Container(
                   width: 40,
                   height: 4,
@@ -1828,15 +2329,13 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Title row with large X close button
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const SizedBox(width: 56), // balance spacer
+                    const SizedBox(width: 56),
                     Text('المساعد الصوتي', style: _T.sectionTitle),
                     GestureDetector(
-                      onTap: () => Navigator.pop(context),
+                      onTap: _handleClose,
                       child: Container(
                         width: 56,
                         height: 56,
@@ -1856,12 +2355,11 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                   ],
                 ),
                 const SizedBox(height: 28),
-
-                // Animated icon area
-                _buildIconArea(),
+                GestureDetector(
+                  onTap: _handleMicTap,
+                  child: _buildIconArea(),
+                ),
                 const SizedBox(height: 20),
-
-                // State title & subtitle with animated transition
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 350),
                   child: Column(
@@ -1869,7 +2367,7 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                     children: [
                       Text(
                         _stateTitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: _T.font,
                           fontSize: 26,
                           fontWeight: FontWeight.w500,
@@ -1880,7 +2378,7 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                       const SizedBox(height: 6),
                       Text(
                         _stateSubtitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: _T.font,
                           fontSize: 18,
                           fontWeight: FontWeight.w400,
@@ -1892,17 +2390,6 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                   ),
                 ),
                 const SizedBox(height: 28),
-
-                // Non-interactive suggestion phrases
-                // TODO(api): Replace with STT → NLU → Intent detection
-                // Supported intents:
-                //   • MarkDoseTaken   → Taken flow
-                //   • MarkDoseMissed  → Missed flow
-                //   • SnoozeMedication → Snooze flow (allowed: 15, 20, 30 min)
-                //   • Repeat          → repeat last prompt
-                //   • Confirm         → confirm current pending action
-                // If snooze duration is unsupported, respond with:
-                //   "مدة التأجيل المتاحة هي 15 أو 20 أو 30 دقيقة"
                 _buildSuggestions(),
                 const SizedBox(height: 8),
               ],
@@ -1920,7 +2407,6 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Outer pulse ring
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (_, __) => Transform.scale(
@@ -1939,7 +2425,6 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
               ),
             ),
           ),
-          // Middle ring
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (_, __) => Transform.scale(
@@ -1956,7 +2441,6 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
               ),
             ),
           ),
-          // Main circle
           Container(
             width: 116,
             height: 116,
@@ -1991,12 +2475,11 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
   }
 
   Widget _buildSuggestions() {
-    // These are display-only hint phrases — NOT interactive buttons.
-    // TODO(api): These will be replaced by real STT transcription results.
     const phrases = [
       'أخذت الجرعة',
       'ما أخذت الدواء',
-      'أجل التذكير',
+      'أجل التذكير 15 دقيقة',
+      'نعم',
     ];
 
     return Column(

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from models import (
     Elder,
     Caregiver,
@@ -49,8 +50,21 @@ from database import (
 )
 import json
 
+from app.routes.assistant_tts import router as assistant_router
+from app.core.errors import ApiError
+from app.core.error_handlers import (
+    api_error_handler,
+    validation_error_handler,
+    unhandled_exception_handler,
+)
+
 app = FastAPI()
 
+app.add_exception_handler(ApiError, api_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+app.include_router(assistant_router)
 init_db()
 
 

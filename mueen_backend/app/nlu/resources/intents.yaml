@@ -1,0 +1,267 @@
+# Intents list for Mu’een AI
+
+naming_rules:
+  convention: PascalCase
+  rename_allowed: false
+
+intents:
+  - name: AskNextDose
+    category: Query
+    utterances:
+      - "متى جرعتي الجاية؟"
+      - "متى الجرعة الجاية؟"
+      - "متى اخذ دوائي مرة ثانية؟"
+      - "وش هي الجرعة الجاية؟"
+      - "وش موعد الدواء الجاي؟"
+      - "متى موعد الدواء التالي؟"
+      - "ايش الجرعة الجاية؟"
+      - "ايش هو الدواء الجاي؟"
+      - "متى اخذ علاجي الجاي؟"
+      - "وش وقت الدواء الجاي؟"
+      - "كم باقي لي على الجرعة الجاية؟"
+      - "كم باقي لي على ما اخذ الجرعة الجاية؟"
+      - "كم باقي لي لين اخذ الجرعة اللي بعدها؟"
+      - "متى الدواء اللي بعده؟"
+      - "كم باقي لي حتى اخذ الجرعة اللي بعدها؟"
+      - "متى دواء القلب والضغط الجاي؟"
+      - "متى أخذ الحبة الجاية؟"
+      - "متى الدواء التالي؟"
+      - "متى العلاج الجاي؟"
+      - "متى جرعة القلب والضغط الجاية؟"
+      - "متى دواء السكر الجاي؟"
+
+    notes:
+      - "Include medication name and time if available."
+      - "If multiple next doses exist, list them without assumption."
+
+  - name: AskTodaySchedule
+    category: Query
+    utterances:
+      - "وش عندي ادوية اليوم؟"
+      - "وش هي جرعاتي اليوم؟"
+      - "عطيني علاجاتي اليوم؟"
+      - "هات لي ادويتي اليوم؟"
+      - "ايش هي علاجاتي اليوم؟"
+      - "اليوم وش هي علاجاتي؟"
+      - "ايش مواعيد ادويتي اليوم؟"
+      - "عطيني جدول ادويتي اليوم"
+      - "جيب لي جدول علاجاتي اليوم"
+      - "عطيني جدولي اليوم؟"
+      - "وش مواعيد جرعاتي اليوم؟"
+      - "وش مواعيد الجرعات حقتي اليوم؟"
+      - "وش مواعيد جرعاتي اليوم الصباح؟"
+      - "وش مواعيد جرعاتي اليوم الظهر؟"
+      - "وش مواعيد جرعاتي اليوم العصر؟"
+      - "وش مواعيد جرعاتي اليوم المساء؟"
+      - "وش مواعيد جرعاتي اليوم الليل؟"
+
+    notes:
+      - "DAY_PART supported: morning / noon / afternoon / evening / night."
+      - "Focus on today's full schedule or today's scheduled times."
+
+  - name: AskRemainingDoses
+    category: Query
+    utterances:
+      - "كم باقي لي جرعات اليوم؟"
+      - "كم باقي من ادوية اليوم؟"
+      - "كم جرعة دواء باقي لي؟"
+      - "كم باقي لي ادوية اليوم؟"
+      - "وش باقي لي ادوية اليوم؟"
+      - "وش هي الادوية الباقية اليوم؟"
+      - "كم جرعة باقية لي اليوم؟"
+      - "كم دواء باقي لي اليوم؟"
+      - "باقي لي كم جرعة اليوم؟"
+      - "ايش باقي لي اليوم من ادويتي؟"
+      - "كم باقي لي و اخلص الادوية اليوم؟"
+      - "قد ايش باقي لي من ادويتي؟"
+      - "قد ايش باقي لي واخلص اليوم؟"
+
+    response_variants:
+      COUNT: "User asks كم / قد ايش"
+      LIST: "User asks وش / ايش"
+
+    notes:
+      - "UX exception allowed: COUNT + LIST may be used together for clarity."
+
+  - name: AskAdherenceStatus
+    category: Query
+    utterances:
+      - "هل انا ملتزم بالدواء؟"
+      - "كيف وضعي مع الادوية؟"
+      - "هل اموري تمام مع ادويتي؟"
+      - "كيف التزامي بجدول الادوية؟"
+      - "وضعي مع الجرعات زين؟"
+      - "هل انا منتظم على العلاج ولا لا؟"
+      - "كيف التزامي هذا الأسبوع؟"
+      - "كيف وضعي مع الادوية الأسبوع هذا؟"
+
+    notes:
+      - "Two modes only: today (default) or weekly (only if explicitly mentioned)."
+      - "Descriptive response only (no percentages)."
+      - "Use 3 levels only: جيد / مقبول / يحتاج انتباه, with short reason."
+
+  - name: MarkDoseTaken
+    category: Adherence
+    utterances:
+      - "اخذت علاجي"
+      - "خذيت دوائي"
+      - "خلاص اخذت دوائي"
+      - "شربت الدواء"
+      - "خلاص خذته"
+      - "خلاص أخذت دوائي اليوم"
+      - "تم، اخذت علاجي"
+      - "اخذت الجرعة"
+      - "تم اخذ الدواء"
+      - "اخذت الحبة"
+      - "أنا أخذت الدواء"
+
+    notes:
+      - "Requires confirmation before logging."
+      - "If multiple doses exist, user must select explicitly."
+
+  - name: MarkDoseMissed
+    category: Adherence
+    utterances:
+      - "نسيت اخذ دوائي"
+      - "ما اخذت علاجي"
+      - "اليوم ما اخذت دوائي"
+      - "ما شربت الدواء اليوم"
+      - "نسيت جرعة اليوم"
+      - "فاتتني الجرعة اليوم"
+      - "راح علي موعد الدواء"
+      - "غاب عن بالي اخذ العلاج"
+      - "فاتتني الجرعة"
+      - "نسيت الدواء"
+
+    notes:
+      - "Requires confirmation before logging."
+      - "No automatic assumption when multiple doses exist."
+
+  - name: SnoozeMedication
+    category: Adherence
+    utterances:
+      - "أجل لي الدواء شوية"
+      - "أبغى أأجل الجرعة"
+      - "بعد شوي باخذ الدواء"
+      - "ذكّرني بعد شوي"
+      - "ذكرني بالعلاج بعد ربع ساعة"
+      - "ابي تذكرني بالدواء بعد نص ساعة"
+      - "ذكرني بعد 15 دقيقة"
+      - "ذكرني بعد 20 دقيقة"
+      - "ذكرني بعد 30 دقيقة"
+      - "أجل الجرعة 15 دقيقة"
+      - "أجل الجرعة 20 دقيقة"
+      - "أجل الجرعة 30 دقيقة"
+
+    notes:
+      - "Allowed snooze values: 15 / 20 / 30 minutes only."
+      - "If snooze duration is missing, ask a follow-up question with allowed choices."
+      - "Snooze allowed once per dose."
+      - "Requires confirmation before execution."
+
+  - name: AskMedicationUsage
+    category: Usage
+    utterances:
+      - "هذا الدواء قبل الأكل ولا بعده؟"
+      - "الدواء هذا على الريق ولا بعد الأكل؟"
+      - "هل يؤخذ مع الطعام أو بدونه؟"
+      - "هل أقدر آخذه على معدة فارغة؟"
+      - "هل فيه أطعمة أتجنبها مع هذا الدواء؟"
+      - "اقدر اخذه مع الحليب؟"
+      - "ايش طريقة استعمال هذا الدواء؟"
+      - "كيف أستخدم هذا الدواء؟"
+      - "هل يرتبط بالأكل؟"
+      - "وش تعليمات استخدام هذا الدواء؟"
+
+    notes:
+      - "Covers stored medication usage instructions, including with/without food and food-related guidance."
+      - "Use MED_NAME or MED_CATEGORY to identify the intended medication."
+      - "Once the medication is identified, retrieve usage guidance only from stored medication data fields such as uses_ar or food_guide_ar."
+      - "Prefer MED_NAME when explicitly provided."
+      - "If MED_NAME is not available but MED_CATEGORY is available, use it only to narrow retrieval or ask clarification if multiple medications match."
+      - "If multiple medications match the same category, ask the user to confirm the intended medication."
+      - "If the user says 'هذا الدواء' and the current context is ambiguous, ask for MED_NAME or confirm the intended medication."
+      - "If multiple candidates exist or no clear medication is available in context, ask for MED_NAME."
+      - "Lookup only. No medical advice, diagnosis, or personalized recommendation."
+
+  - name: Confirm
+    category: Control
+    utterances:
+      # Positive confirmation
+      - "نعم"
+      - "ايوه"
+      - "ايه"
+      - "صحيح"
+      - "صح"
+      - "تمام"
+      - "موافق"
+      - "تمام سوه"
+      - "ايه كمل"
+
+      # Negative confirmation (reject pending action)
+      - "لا"
+      - "غلط"
+      - "مو صحيح"
+      - "لا مو كذا"
+      - "لا ما ابغى"
+      - "مو موافق"
+      - "لا غلط"
+      - "لا مو قصدي"
+      - "لا هذا مو اللي ابغاه"
+
+    notes:
+      - "Used to confirm or reject a pending question or action."
+      - "Short answers like 'نعم' or 'لا' should map here when the assistant is asking for confirmation."
+      - "'لا' alone usually means rejecting the suggested action, not cancelling the conversation."
+      - "Maps to CONFIRMATION_FLAG=true/false depending on wording."
+
+  - name: Repeat
+    category: Control
+    utterances:
+      - "عيد مرة ثانية"
+      - "ايش قلت ما سمعت؟"
+      - "ايش قلت؟"
+      - "ما سمعتك وش قلت"
+      - "عيد علي ثاني"
+      - "قول مرة ثانية"
+      - "ارجع عيد مرة ثانية"
+      - "قلها مرة ثانية"
+      - "قولها مرة ثانية"
+      - "وش قلت ما سمعت؟"
+      - "ما ركزت معك وش قلت؟"
+      - "كررها مرة ثانية"
+      - "ما سمعت اول مرة"
+      - "ارجع عيدها"
+      - "ارجع كررها ثاني"
+
+    notes:
+      - "Repeat the last system message verbatim."
+      - "No DB reads/writes. No slot changes."
+
+  - name: Cancel
+    category: Control
+    utterances:
+      - "الغي"
+      - "الغيه"
+      - "إلغاء"
+      - "كنسل"
+      - "خلاص وقف"
+      - "لا تكمل"
+      - "وقف العملية"
+      - "انس الموضوع"
+      - "غيرت رأيي"
+
+    notes:
+      - "Cancels the current active flow completely."
+      - "Use when the user wants to stop the interaction or abort the process."
+      - "Do NOT use for simple yes/no confirmation responses."
+
+out_of_scope:
+  title: OutOfScope
+  examples:
+    - "هل أقدر أزيد جرعة الدواء؟"
+    - "وش أفضل علاج للضغط؟"
+    - "هل هذا الدواء يناسب حالتي؟"
+  response_policy:
+    - "No medical advice or diagnosis."
+    - "Redirect to supported intents only."

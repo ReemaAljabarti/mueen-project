@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/elder.dart';
@@ -11,9 +12,9 @@ class ApiService {
   // static const String baseUrl = 'http://10.0.2.2:8001';
 
   // Real device: منزل
-  static const String baseUrl = 'http://192.168.1.14:8001';
+  // static const String baseUrl = 'http://192.168.1.14:8001';
 
-  //static const String baseUrl = 'http://172.20.10.7:8001';// Real device: الجامعة
+  static const String baseUrl = 'http://172.20.10.7:8001'; // شكبة اسيل
 
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,
@@ -343,6 +344,39 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  // ─── Voice Assistant ──────────────────────────────────────────────────────
+
+  /// POST /assistant/respond-audio
+  /// Sends a recorded audio file to the voice assistant backend.
+  /// The backend handles STT, NLU, DB action, and TTS.
+  static Future<Map<String, dynamic>> respondAssistantAudio({
+    required File audioFile,
+    required int elderId,
+  }) async {
+    final url = Uri.parse('$baseUrl/assistant/respond-audio');
+
+    final request = http.MultipartRequest('POST', url);
+
+    request.fields['elder_id'] = elderId.toString();
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        audioFile.path,
+      ),
+    );
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          'Failed to get assistant audio response: ${response.body}');
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   // ─── Dose Reminder & Adherence ────────────────────────────────────────────
 
   /// GET /reminders/due-now/{elderId}
@@ -353,7 +387,7 @@ class ApiService {
     final url = Uri.parse('$baseUrl/reminders/due-now/$elderId');
     final response = await http.get(url);
     if (response.statusCode != 200) {
-      throw Exception('Failed to fetch due doses: \${response.body}');
+      throw Exception('Failed to fetch due doses: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -430,7 +464,7 @@ class ApiService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to mark dose taken: \${response.body}');
+      throw Exception('Failed to mark dose taken: ${response.body}');
     }
   }
 
@@ -454,7 +488,7 @@ class ApiService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to mark dose missed: \${response.body}');
+      throw Exception('Failed to mark dose missed: ${response.body}');
     }
   }
 
@@ -479,7 +513,7 @@ class ApiService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to snooze dose: \${response.body}');
+      throw Exception('Failed to snooze dose: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -502,7 +536,7 @@ class ApiService {
       }),
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to mark dose no-response: \${response.body}');
+      throw Exception('Failed to mark dose no-response: ${response.body}');
     }
   }
 
@@ -514,7 +548,7 @@ class ApiService {
     final url = Uri.parse('$baseUrl/caregiver/missed-doses/$caregiverId');
     final response = await http.get(url);
     if (response.statusCode != 200) {
-      throw Exception('Failed to load missed doses: \${response.body}');
+      throw Exception('Failed to load missed doses: ${response.body}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

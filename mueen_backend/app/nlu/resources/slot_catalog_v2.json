@@ -1,0 +1,89 @@
+{
+  "MED_NAME": {
+    "type": "string",
+    "inferable": true,
+    "internal_only": false
+  },
+
+  "MED_CATEGORY": {
+    "type": "enum",
+    "allowed_values": [
+      "قلب وضغط",
+      "سكري",
+      "كوليسترول",
+      "مسكنات",
+      "ربو",
+      "مرطب العين",
+      "روماتيزم ومناعة",
+      "أعصاب",
+      "جهاز هضمي وحموضة",
+      "فقر الدم",
+      "مرخي عضلات",
+      "قولون",
+      "مسالك بولية",
+      "مكملات غذائية",
+      "مضاد حيوي",
+      "حساسية وجيوب أنفية",
+      "ضغط العين",
+      "صداع نصفي"
+    ],
+    "inferable": true,
+    "internal_only": false
+  },
+
+  
+  "INFO_TYPE": {
+    "type": "enum",
+    "allowed_values": ["usage", "food_guide"],
+    "inferable": true,
+    "internal_only": false
+  },
+
+  "DOSE_INSTANCE": {
+    "type": "object",
+    "inferable": true,
+    "internal_only": true
+  },
+
+  "SNOOZE_MINUTES": {
+    "type": "integer",
+    "allowed_values": [15, 20, 30],
+    "inferable": false,
+    "internal_only": false
+  },
+
+  "DATE_SCOPE": {
+    "type": "enum",
+    "allowed_values": ["today", "this_week"],
+    "default": "today",
+    "inferable": true,
+    "internal_only": false
+  },
+
+  "DAY_PART": {
+    "type": "enum",
+    "allowed_values": ["morning", "noon", "afternoon", "evening", "night"],
+    "inferable": false,
+    "internal_only": false
+  },
+
+  "ADHERENCE_STATUS": {
+    "type": "enum",
+    "allowed_values": ["taken", "missed"],
+    "inferable": true,
+    "internal_only": false
+  },
+
+  "CONFIRMATION_FLAG": {
+    "type": "boolean",
+    "inferable": false,
+    "internal_only": false
+  },
+
+  "QUERY_TARGET": {
+    "type": "enum",
+    "allowed_values": ["NEXT_DOSE", "TODAY_SCHEDULE"],
+    "inferable": true,
+    "internal_only": true
+  }
+}

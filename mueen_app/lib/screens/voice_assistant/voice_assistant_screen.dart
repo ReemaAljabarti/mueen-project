@@ -13,8 +13,19 @@
 //   • ابحث عن تعليقات "TODO(api):" لمعرفة نقاط التكامل
 // ============================================================
 
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+
+import '../../services/api_service.dart';
+import '../../services/current_elder.dart';
 
 // ---------------------------------------------------------------------------
 // نظام الألوان — مستخرج من Figma
@@ -162,15 +173,35 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   // متحكم الرسوم المتحركة لموجات الصوت
   late AnimationController _waveController;
 
+  // أدوات تسجيل صوت المستخدم وتشغيل رد المساعد
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _isRecording = false;
+  String _assistantSpokenText = '';
+
   @override
   void initState() {
     super.initState();
+
+    debugPrint('[VoiceAssistant] initState called');
+
     _state = widget.initialState;
+
+    debugPrint('[VoiceAssistant] initial state = $_state');
+
     _initAnimations();
     _startAnimationsForState(_state);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('[VoiceAssistant] postFrameCallback: starting recording');
+      _startRecording();
+    });
   }
 
   void _initAnimations() {
+    debugPrint('[VoiceAssistant] _initAnimations called');
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -183,20 +214,27 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+
+    debugPrint('[VoiceAssistant] _initAnimations completed');
   }
 
   void _startAnimationsForState(VoiceAssistantState state) {
+    debugPrint('[VoiceAssistant] _startAnimationsForState called: $state');
+
     _pulseController.stop();
     _waveController.stop();
 
     switch (state) {
       case VoiceAssistantState.listening:
+        debugPrint('[VoiceAssistant] animation mode: listening pulse');
         _pulseController.repeat(reverse: true);
         break;
       case VoiceAssistantState.processing:
+        debugPrint('[VoiceAssistant] animation mode: processing waveform');
         _waveController.repeat();
         break;
       case VoiceAssistantState.responding:
+        debugPrint('[VoiceAssistant] animation mode: responding pulse');
         _pulseController.repeat(reverse: true);
         break;
     }
@@ -204,8 +242,17 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
 
   @override
   void dispose() {
+    debugPrint('[VoiceAssistant] dispose called');
+    debugPrint('[VoiceAssistant] _isRecording on dispose = $_isRecording');
+    debugPrint('[VoiceAssistant] current state on dispose = $_state');
+
+    _recorder.dispose();
+    _audioPlayer.dispose();
     _pulseController.dispose();
     _waveController.dispose();
+
+    debugPrint('[VoiceAssistant] dispose completed');
+
     super.dispose();
   }
 
@@ -214,9 +261,396 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   // TODO(api): استدعِ هذه الدالة عند تلقّي استجابة من FastAPI
   // -------------------------------------------------------------------------
   void changeState(VoiceAssistantState newState) {
-    if (!mounted) return;
+    debugPrint('[VoiceAssistant] changeState called: $_state -> $newState');
+
+    if (!mounted) {
+      debugPrint('[VoiceAssistant] changeState ignored: widget is not mounted');
+      return;
+    }
+
     setState(() => _state = newState);
     _startAnimationsForState(newState);
+
+    debugPrint('[VoiceAssistant] changeState done: current state = $_state');
+  }
+
+  Future<void> _startRecording() async {
+    debugPrint('[VoiceAssistant] _startRecording called');
+    debugPrint('[VoiceAssistant] _isRecording before start = $_isRecording');
+    debugPrint('[VoiceAssistant] current state before start = $_state');
+
+    if (_isRecording) {
+      debugPrint('[VoiceAssistant] _startRecording stopped: already recording');
+      return;
+    }
+
+    final hasPermission = await _recorder.hasPermission();
+    debugPrint('[VoiceAssistant] microphone permission = $hasPermission');
+
+    if (!hasPermission) {
+      debugPrint('[VoiceAssistant] no microphone permission');
+      _showMessage('لم يتم السماح باستخدام الميكروفون.');
+      return;
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    debugPrint('[VoiceAssistant] temp directory = ${tempDir.path}');
+
+    final filePath =
+        '${tempDir.path}/assistant_input_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    debugPrint('[VoiceAssistant] recording file path = $filePath');
+
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+      ),
+      path: filePath,
+    );
+
+    debugPrint('[VoiceAssistant] recorder.start completed');
+
+    if (!mounted) {
+      debugPrint(
+          '[VoiceAssistant] after recorder.start: widget is not mounted');
+      return;
+    }
+
+    setState(() {
+      _isRecording = true;
+      _assistantSpokenText = '';
+      _state = VoiceAssistantState.listening;
+    });
+
+    debugPrint('[VoiceAssistant] recording started successfully');
+    debugPrint('[VoiceAssistant] _isRecording after start = $_isRecording');
+    debugPrint('[VoiceAssistant] current state after start = $_state');
+
+    _startAnimationsForState(VoiceAssistantState.listening);
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    debugPrint('[VoiceAssistant] _stopRecordingAndSend called');
+    debugPrint('[VoiceAssistant] _isRecording before stop = $_isRecording');
+    debugPrint('[VoiceAssistant] current state before stop = $_state');
+
+    if (!_isRecording) {
+      debugPrint(
+          '[VoiceAssistant] _stopRecordingAndSend stopped: not recording');
+      return;
+    }
+
+    final path = await _recorder.stop();
+
+    debugPrint('[VoiceAssistant] recorder.stop completed');
+    debugPrint('[VoiceAssistant] stopped recording path = $path');
+
+    if (!mounted) {
+      debugPrint('[VoiceAssistant] after recorder.stop: widget is not mounted');
+      return;
+    }
+
+    setState(() {
+      _isRecording = false;
+      _state = VoiceAssistantState.processing;
+    });
+
+    debugPrint('[VoiceAssistant] state changed to processing');
+    debugPrint('[VoiceAssistant] _isRecording after stop = $_isRecording');
+
+    _startAnimationsForState(VoiceAssistantState.processing);
+
+    if (path == null) {
+      debugPrint('[VoiceAssistant] path is null after stopping recorder');
+      _showMessage('لم يتم تسجيل صوت واضح.');
+      await _startRecording();
+      return;
+    }
+
+    final recordedFile = File(path);
+    final fileExists = await recordedFile.exists();
+    final fileSize = fileExists ? await recordedFile.length() : 0;
+
+    debugPrint('[VoiceAssistant] recorded file exists = $fileExists');
+    debugPrint('[VoiceAssistant] recorded file size = $fileSize bytes');
+
+    try {
+      debugPrint('[VoiceAssistant] sending recorded audio to assistant');
+
+      final response = await _sendAudioToAssistant(recordedFile);
+
+      debugPrint('[VoiceAssistant] assistant response received');
+      debugPrint(
+          '[VoiceAssistant] assistant response keys = ${response.keys.toList()}');
+      debugPrint('[VoiceAssistant] spoken_text = ${response['spoken_text']}');
+      debugPrint('[VoiceAssistant] audio_format = ${response['audio_format']}');
+      debugPrint(
+        '[VoiceAssistant] audio_base64 length = ${response['audio_base64']?.toString().length ?? 0}',
+      );
+
+      if (!mounted) {
+        debugPrint(
+            '[VoiceAssistant] after assistant response: widget is not mounted');
+        return;
+      }
+
+      setState(() {
+        _assistantSpokenText = response['spoken_text']?.toString() ?? '';
+        _state = VoiceAssistantState.responding;
+      });
+
+      debugPrint('[VoiceAssistant] state changed to responding');
+
+      _startAnimationsForState(VoiceAssistantState.responding);
+
+      await _playBase64Audio(
+        audioBase64: response['audio_base64']?.toString() ?? '',
+        audioFormat: response['audio_format']?.toString() ?? 'mp3',
+      );
+
+      debugPrint('[VoiceAssistant] playBase64Audio completed');
+
+      if (!mounted) {
+        debugPrint(
+            '[VoiceAssistant] after audio playback: widget is not mounted');
+        return;
+      }
+
+      setState(() {
+        _state = VoiceAssistantState.listening;
+      });
+
+      debugPrint('[VoiceAssistant] state returned to listening');
+
+      _startAnimationsForState(VoiceAssistantState.listening);
+      await _startRecording();
+    } catch (e, stackTrace) {
+      debugPrint('[VoiceAssistant] error in _stopRecordingAndSend = $e');
+      debugPrint('[VoiceAssistant] stackTrace = $stackTrace');
+
+      if (!mounted) {
+        debugPrint('[VoiceAssistant] catch block: widget is not mounted');
+        return;
+      }
+
+      _showMessage('حدث خطأ أثناء تشغيل المساعد. حاول مرة أخرى.');
+
+      setState(() {
+        _state = VoiceAssistantState.listening;
+      });
+
+      debugPrint('[VoiceAssistant] after error: state returned to listening');
+
+      _startAnimationsForState(VoiceAssistantState.listening);
+      await _startRecording();
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendAudioToAssistant(File audioFile) async {
+    debugPrint('[VoiceAssistant] _sendAudioToAssistant called');
+    debugPrint('[VoiceAssistant] audio file path = ${audioFile.path}');
+
+    final exists = await audioFile.exists();
+    final size = exists ? await audioFile.length() : 0;
+
+    debugPrint('[VoiceAssistant] audio file exists before send = $exists');
+    debugPrint('[VoiceAssistant] audio file size before send = $size bytes');
+
+    final elderId = currentElder?.id;
+
+    debugPrint('[VoiceAssistant] currentElder = $currentElder');
+    debugPrint('[VoiceAssistant] current elder id = $elderId');
+
+    if (elderId == null) {
+      debugPrint('[VoiceAssistant] ERROR: Current elder id is missing');
+      throw Exception('Current elder id is missing.');
+    }
+
+    final uri = Uri.parse('${ApiService.baseUrl}/assistant/respond-audio');
+
+    debugPrint('[VoiceAssistant] ApiService.baseUrl = ${ApiService.baseUrl}');
+    debugPrint('[VoiceAssistant] assistant audio uri = $uri');
+
+    final request = http.MultipartRequest('POST', uri);
+    request.fields['elder_id'] = elderId.toString();
+
+    debugPrint('[VoiceAssistant] multipart fields = ${request.fields}');
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        audioFile.path,
+      ),
+    );
+
+    debugPrint(
+        '[VoiceAssistant] multipart files count = ${request.files.length}');
+    debugPrint(
+        '[VoiceAssistant] multipart file field = ${request.files.first.field}');
+    debugPrint(
+        '[VoiceAssistant] multipart file filename = ${request.files.first.filename}');
+    debugPrint('[VoiceAssistant] sending HTTP request now');
+
+    final streamedResponse = await request.send();
+
+    debugPrint(
+        '[VoiceAssistant] streamed response status = ${streamedResponse.statusCode}');
+
+    final response = await http.Response.fromStream(streamedResponse);
+
+    debugPrint(
+        '[VoiceAssistant] HTTP response status = ${response.statusCode}');
+    debugPrint('[VoiceAssistant] HTTP response body = ${response.body}');
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      debugPrint('[VoiceAssistant] assistant request failed');
+      throw Exception('Assistant request failed: ${response.body}');
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+
+    debugPrint('[VoiceAssistant] decoded response successfully');
+    debugPrint('[VoiceAssistant] decoded keys = ${decoded.keys.toList()}');
+
+    return decoded;
+  }
+
+  Future<void> _playBase64Audio({
+    required String audioBase64,
+    required String audioFormat,
+  }) async {
+    debugPrint('[VoiceAssistant] _playBase64Audio called');
+    debugPrint('[VoiceAssistant] audioBase64 length = ${audioBase64.length}');
+    debugPrint('[VoiceAssistant] audioFormat = $audioFormat');
+
+    if (audioBase64.isEmpty) {
+      debugPrint('[VoiceAssistant] audioBase64 is empty, skipping playback');
+      return;
+    }
+
+    final bytes = base64Decode(audioBase64);
+    debugPrint('[VoiceAssistant] decoded audio bytes length = ${bytes.length}');
+
+    final tempDir = await getTemporaryDirectory();
+
+    final file = File(
+      '${tempDir.path}/assistant_response_${DateTime.now().millisecondsSinceEpoch}.$audioFormat',
+    );
+
+    debugPrint('[VoiceAssistant] response audio file path = ${file.path}');
+
+    await file.writeAsBytes(bytes, flush: true);
+
+    final fileExists = await file.exists();
+    final fileSize = fileExists ? await file.length() : 0;
+
+    debugPrint('[VoiceAssistant] response audio file exists = $fileExists');
+    debugPrint('[VoiceAssistant] response audio file size = $fileSize bytes');
+
+    await _audioPlayer.stop();
+    debugPrint('[VoiceAssistant] audio player stopped before playback');
+
+    final completer = Completer<void>();
+
+    late StreamSubscription<void> completeSubscription;
+    late StreamSubscription<PlayerState> stateSubscription;
+
+    completeSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      debugPrint('[VoiceAssistant] audio playback completed event received');
+
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    });
+
+    stateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+      debugPrint('[VoiceAssistant] audio player state changed = $state');
+
+      if (state == PlayerState.stopped && !completer.isCompleted) {
+        debugPrint('[VoiceAssistant] audio playback stopped event received');
+        completer.complete();
+      }
+    });
+
+    await _audioPlayer.play(DeviceFileSource(file.path));
+    debugPrint('[VoiceAssistant] audio player started playback');
+
+    await completer.future;
+
+    await completeSubscription.cancel();
+    await stateSubscription.cancel();
+
+    debugPrint(
+        '[VoiceAssistant] _playBase64Audio completed after real playback end');
+  }
+
+  Future<void> _handleMicTap() async {
+    debugPrint('[VoiceAssistant] _handleMicTap called');
+    debugPrint('[VoiceAssistant] current state on mic tap = $_state');
+    debugPrint('[VoiceAssistant] _isRecording on mic tap = $_isRecording');
+
+    if (_state == VoiceAssistantState.processing) {
+      debugPrint('[VoiceAssistant] mic tap ignored: currently processing');
+      return;
+    }
+
+    if (_state == VoiceAssistantState.listening) {
+      debugPrint(
+          '[VoiceAssistant] mic tap while listening: stopping and sending');
+      await _stopRecordingAndSend();
+      return;
+    }
+
+    if (_state == VoiceAssistantState.responding) {
+      debugPrint(
+          '[VoiceAssistant] mic tap while responding: stop audio and start recording');
+      await _audioPlayer.stop();
+      await _startRecording();
+    }
+  }
+
+  Future<void> _handleClose() async {
+    debugPrint('[VoiceAssistant] _handleClose called');
+    debugPrint('[VoiceAssistant] _isRecording on close = $_isRecording');
+    debugPrint('[VoiceAssistant] current state on close = $_state');
+
+    if (_isRecording) {
+      debugPrint('[VoiceAssistant] stopping recorder before closing');
+      await _recorder.stop();
+      _isRecording = false;
+      debugPrint('[VoiceAssistant] recorder stopped on close');
+    }
+
+    debugPrint('[VoiceAssistant] stopping audio player before closing');
+    await _audioPlayer.stop();
+
+    if (!mounted) {
+      debugPrint('[VoiceAssistant] close stopped: widget is not mounted');
+      return;
+    }
+
+    if (widget.onClose != null) {
+      debugPrint('[VoiceAssistant] calling widget.onClose');
+      widget.onClose!();
+    } else {
+      debugPrint('[VoiceAssistant] Navigator.maybePop');
+      Navigator.maybePop(context);
+    }
+  }
+
+  void _showMessage(String message) {
+    debugPrint('[VoiceAssistant] _showMessage called: $message');
+
+    if (!mounted) {
+      debugPrint('[VoiceAssistant] showMessage ignored: widget is not mounted');
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -232,7 +666,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
           child: Column(
             children: [
               _Header(
-                onClose: widget.onClose ?? () => Navigator.maybePop(context),
+                onClose: () {
+                  _handleClose();
+                },
               ),
               Expanded(
                 child: AnimatedSwitcher(
@@ -271,74 +707,79 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
   // منطقة الأيقونة المتحركة
   // -------------------------------------------------------------------------
   Widget _buildIconArea() {
-    return SizedBox(
-      width: 220,
-      height: 220,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // الحلقة الخارجية
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (_, __) => Transform.scale(
-              scale: _state != VoiceAssistantState.processing
-                  ? _pulseAnimation.value
-                  : 1.0,
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _AppColors.primary.withOpacity(
-                    _state == VoiceAssistantState.responding ? 0.10 : 0.25,
+    return GestureDetector(
+      onTap: () {
+        _handleMicTap();
+      },
+      child: SizedBox(
+        width: 220,
+        height: 220,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // الحلقة الخارجية
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (_, __) => Transform.scale(
+                scale: _state != VoiceAssistantState.processing
+                    ? _pulseAnimation.value
+                    : 1.0,
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _AppColors.primary.withOpacity(
+                      _state == VoiceAssistantState.responding ? 0.10 : 0.25,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          // الحلقة الوسطى
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (_, __) => Transform.scale(
-              scale: _state != VoiceAssistantState.processing
-                  ? _pulseAnimation.value * 0.9
-                  : 1.0,
-              child: Container(
-                width: 165,
-                height: 165,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _AppColors.primary.withOpacity(0.20),
+            // الحلقة الوسطى
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (_, __) => Transform.scale(
+                scale: _state != VoiceAssistantState.processing
+                    ? _pulseAnimation.value * 0.9
+                    : 1.0,
+                child: Container(
+                  width: 165,
+                  height: 165,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _AppColors.primary.withOpacity(0.20),
+                  ),
                 ),
               ),
             ),
-          ),
-          // الدائرة الرئيسية
-          Container(
-            width: 130,
-            height: 130,
-            decoration: BoxDecoration(
-              color: _state == VoiceAssistantState.responding
-                  ? Colors.white
-                  : Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: _AppColors.primary, width: 4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 15,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 6,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+            // الدائرة الرئيسية
+            Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                color: _state == VoiceAssistantState.responding
+                    ? Colors.white
+                    : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: _AppColors.primary, width: 4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.10),
+                    blurRadius: 15,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.10),
+                    blurRadius: 6,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(child: _buildStateIcon()),
             ),
-            child: Center(child: _buildStateIcon()),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -374,7 +815,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
     switch (_state) {
       case VoiceAssistantState.listening:
         title = 'يستمع الآن';
-        subtitle = 'تحدث الآن أو اطرح سؤالك';
+        subtitle = 'تحدث الآن، ثم اضغط المايك عند الانتهاء';
         break;
       case VoiceAssistantState.processing:
         title = 'جارٍ معالجة طلبك';
@@ -382,7 +823,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         break;
       case VoiceAssistantState.responding:
         title = 'جاري الرد';
-        subtitle = 'يتم الآن تشغيل الرد الصوتي';
+        subtitle = _assistantSpokenText.isNotEmpty
+            ? _assistantSpokenText
+            : 'يتم الآن تشغيل الرد الصوتي';
         break;
     }
 
