@@ -14,11 +14,16 @@ class ElderProfileScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'ملف الكبيرة/ة',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
+        centerTitle: false,
+        title: const Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            'ملف الكبير/ة',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         leading: IconButton(

@@ -340,6 +340,12 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     final statusText = m['status']?.toString() ?? 'pending';
     final snoozeCount = int.tryParse(m['snooze_count']?.toString() ?? '0') ?? 0;
 
+    // If the backend returns a snoozed dose from /reminders/due-now,
+    // it means the snooze time has arrived and the elder must see
+    // the full-screen alert again. We display it as pending, but keep
+    // hasBeenSnoozed = true so a second snooze attempt becomes missed.
+    final bool wasSnoozedBefore = snoozeCount > 0 || statusText == 'snoozed';
+
     DoseStatus parsedStatus;
 
     switch (statusText) {
@@ -350,7 +356,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
         parsedStatus = DoseStatus.missed;
         break;
       case 'snoozed':
-        parsedStatus = DoseStatus.snoozed;
+        parsedStatus = DoseStatus.pending;
         break;
       case 'no_response':
         parsedStatus = DoseStatus.noResponse;
@@ -377,7 +383,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       foodInstruction: m['food_guide_ar']?.toString() ?? '',
       gtin: m['gtin']?.toString(),
       status: parsedStatus,
-      hasBeenSnoozed: snoozeCount > 0 || parsedStatus == DoseStatus.snoozed,
+      hasBeenSnoozed: wasSnoozedBefore,
     );
   }
 
@@ -443,10 +449,14 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   }
 
   Future<void> _speakCurrentDoseDetails() async {
-    if (_doses.isEmpty) return;
-    if (_currentIndex < 0 || _currentIndex >= _doses.length) return;
+    await _speakCurrentDoseDetailsForIndex(_currentIndex);
+  }
 
-    final dose = _doses[_currentIndex];
+  Future<void> _speakCurrentDoseDetailsForIndex(int doseIndex) async {
+    if (_doses.isEmpty) return;
+    if (doseIndex < 0 || doseIndex >= _doses.length) return;
+
+    final dose = _doses[doseIndex];
     final text = _buildDoseDetailsText(dose);
 
     debugPrint('[Audio] dose details text = $text');
@@ -675,20 +685,59 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
                   isTimerExpired: _isTimerExpired,
                   onGoHome: () => Navigator.pop(context, true),
                 )
-              : _ActiveScreen(
-                  doses: _doses,
-                  currentIndex: _currentIndex,
-                  remainingSeconds: _remainingSeconds,
-                  formatTime: _formatTime,
-                  onIndexChanged: (i) => setState(() => _currentIndex = i),
-                  onTaken: () => _showConfirmTakenDialog(),
-                  onMissed: () => _showConfirmMissedDialog(),
-                  onSnooze: () => _showSnoozeOptionsSheet(),
-                  onVoiceTap: () => _showVoiceAssistantSheet(),
-                  onSpeakDoseDetails: () => _speakCurrentDoseDetails(),
-                ),
+              : _buildActiveDoseBody(),
         ),
         // floatingActionButton removed as requested
+      ),
+    );
+  }
+
+  Widget _buildActiveDoseBody() {
+    final pendingIndexes = <int>[];
+
+    for (int i = 0; i < _doses.length; i++) {
+      if (_doses[i].status == DoseStatus.pending) {
+        pendingIndexes.add(i);
+      }
+    }
+
+    if (pendingIndexes.isEmpty) {
+      return _SummaryScreen(
+        doses: _doses,
+        isTimerExpired: _isTimerExpired,
+        onGoHome: () => Navigator.pop(context, true),
+      );
+    }
+
+    final activeOriginalIndex = pendingIndexes.contains(_currentIndex)
+        ? _currentIndex
+        : pendingIndexes.first;
+
+    final activeVisibleIndex = pendingIndexes.indexOf(activeOriginalIndex);
+
+    final visiblePendingDoses =
+        pendingIndexes.map((index) => _doses[index]).toList();
+
+    return _ActiveScreen(
+      doses: visiblePendingDoses,
+      currentIndex: activeVisibleIndex,
+      remainingSeconds: _remainingSeconds,
+      formatTime: _formatTime,
+      onIndexChanged: (visibleIndex) {
+        if (visibleIndex < 0 || visibleIndex >= pendingIndexes.length) {
+          return;
+        }
+
+        setState(() {
+          _currentIndex = pendingIndexes[visibleIndex];
+        });
+      },
+      onTaken: () => _showConfirmTakenDialog(activeOriginalIndex),
+      onMissed: () => _showConfirmMissedDialog(activeOriginalIndex),
+      onSnooze: () => _showSnoozeOptionsSheet(activeOriginalIndex),
+      onVoiceTap: () => _showVoiceAssistantSheet(activeOriginalIndex),
+      onSpeakDoseDetails: () => _speakCurrentDoseDetailsForIndex(
+        activeOriginalIndex,
       ),
     );
   }
@@ -696,7 +745,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   // -------------------------------------------------------------------------
   // Dialogs & Bottom Sheets
   // -------------------------------------------------------------------------
-  void _showConfirmTakenDialog() {
+  void _showConfirmTakenDialog([int? doseIndex]) {
     _showConfirmDialog(
       title: 'هل أخذت الجرعة؟',
       subtitle: 'يرجى تأكيد أنك تناولت الدواء',
@@ -704,7 +753,13 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       iconBgColor: _C.successBg,
       iconColor: _C.primary,
       onConfirm: () {
-        final dose = _doses[_currentIndex];
+        final index = doseIndex ?? _currentIndex;
+
+        if (index < 0 || index >= _doses.length) {
+          return;
+        }
+
+        final dose = _doses[index];
         dose.status = DoseStatus.taken;
         _apiConfirmTaken(dose);
         _showResultCard(
@@ -719,7 +774,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
-  void _showConfirmMissedDialog() {
+  void _showConfirmMissedDialog([int? doseIndex]) {
     _showConfirmDialog(
       title: 'هل أنت متأكد أنك لم تتناول الجرعة؟',
       subtitle: 'سيتم تسجيل الجرعة على أنها غير مأخوذة',
@@ -727,7 +782,13 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       iconBgColor: _C.dangerBg,
       iconColor: _C.danger,
       onConfirm: () {
-        final dose = _doses[_currentIndex];
+        final index = doseIndex ?? _currentIndex;
+
+        if (index < 0 || index >= _doses.length) {
+          return;
+        }
+
+        final dose = _doses[index];
         dose.status = DoseStatus.missed;
         _apiConfirmMissed(dose);
         _showResultCard(
@@ -742,7 +803,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
-  void _showSnoozeOptionsSheet() {
+  void _showSnoozeOptionsSheet([int? doseIndex]) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -791,7 +852,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
                   minutes: minutes,
                   onTap: () {
                     Navigator.pop(ctx);
-                    _handleSnoozeSelected(minutes);
+                    _handleSnoozeSelected(minutes, doseIndex);
                   },
                 ),
                 const SizedBox(height: 12),
@@ -805,8 +866,14 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
   }
   //====================================================================
 
-  void _handleSnoozeSelected(int minutes) {
-    final dose = _doses[_currentIndex];
+  void _handleSnoozeSelected(int minutes, [int? doseIndex]) {
+    final index = doseIndex ?? _currentIndex;
+
+    if (index < 0 || index >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[index];
 
     if (dose.hasBeenSnoozed) {
       _showRepeatedSnoozeConfirmDialog(dose);
@@ -831,25 +898,18 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
 
 //====================================================================
   void _showRepeatedSnoozeConfirmDialog(MedicationDose dose) {
-    _showConfirmDialog(
-      title: 'لا يمكن تأجيل هذه الجرعة مرة أخرى',
-      subtitle: 'تم تأجيل هذه الجرعة مسبقًا. هل تريد تسجيلها كجرعة فائتة؟',
-      icon: Icons.block_rounded,
-      iconBgColor: _C.dangerBg,
-      iconColor: _C.danger,
-      onConfirm: () {
-        dose.status = DoseStatus.missed;
-        _apiConfirmMissed(dose, reason: 'repeated_snooze_attempt');
+    // A dose can be snoozed only once. If the elder tries to snooze it again,
+    // record it as missed and notify the caregiver.
+    dose.status = DoseStatus.missed;
+    _apiConfirmMissed(dose, reason: 'repeated_snooze_attempt');
 
-        _showResultCard(
-          title: 'تم تبليغ مقدم الرعاية',
-          subtitle: 'تم اعتبار الجرعة فائتة\nوسيتم الانتقال إلى الجرعة التالية',
-          icon: Icons.notifications_active_rounded,
-          iconBgColor: _C.successBg,
-          iconColor: _C.primary,
-          onDismiss: _moveToNextDose,
-        );
-      },
+    _showResultCard(
+      title: 'نعتذر، لا يمكن تأجيل الجرعة مرة أخرى',
+      subtitle: 'تم تسجيل الجرعة كفائتة\nوسيتم تبليغ مقدم الرعاية',
+      icon: Icons.notifications_active_rounded,
+      iconBgColor: _C.warningBg,
+      iconColor: _C.warning,
+      onDismiss: _moveToNextDose,
     );
   }
 
@@ -951,6 +1011,24 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     required Color iconColor,
     required VoidCallback onDismiss,
   }) {
+    bool didDismiss = false;
+
+    void closeAndContinue() {
+      if (didDismiss) return;
+      didDismiss = true;
+
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      onDismiss();
+    }
+
+    Future.delayed(const Duration(milliseconds: 1600), () {
+      if (!mounted) return;
+      closeAndContinue();
+    });
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -967,54 +1045,61 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 100,
-                  height: 100,
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
                     color: iconBgColor,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, size: 56, color: iconColor),
+                  child: Icon(icon, size: 60, color: iconColor),
                 ),
                 const SizedBox(height: 24),
                 Text(
                   title,
-                  style: _T.sectionTitle,
+                  style: _T.sectionTitle.copyWith(fontSize: 28),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
-                Text(subtitle, style: _T.subtitle, textAlign: TextAlign.center),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    onDismiss();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _C.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    minimumSize: const Size(double.infinity, 0),
-                    elevation: 0,
+                Text(
+                  subtitle,
+                  style: _T.subtitle,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'سيتم الانتقال تلقائيًا',
+                  style: _T.subtitle.copyWith(
+                    fontSize: 16,
+                    color: _C.primary,
+                    fontWeight: FontWeight.w500,
                   ),
-                  child: const Text('متابعة', style: _T.btnPrimary),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
           ),
         ),
       ),
-    );
+    ).then((_) {
+      if (!didDismiss) {
+        didDismiss = true;
+      }
+    });
   }
 
-  void _handleVoiceTakenConfirmed() {
+  void _handleVoiceTakenConfirmed([int? doseIndex]) {
     if (!mounted) return;
     if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
       return;
     }
 
-    final dose = _doses[_currentIndex];
+    final index = doseIndex ?? _currentIndex;
+
+    if (index < 0 || index >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[index];
 
     setState(() {
       dose.status = DoseStatus.taken;
@@ -1030,13 +1115,19 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
-  void _handleVoiceMissedConfirmed() {
+  void _handleVoiceMissedConfirmed([int? doseIndex]) {
     if (!mounted) return;
     if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
       return;
     }
 
-    final dose = _doses[_currentIndex];
+    final index = doseIndex ?? _currentIndex;
+
+    if (index < 0 || index >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[index];
 
     setState(() {
       dose.status = DoseStatus.missed;
@@ -1052,13 +1143,37 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
-  void _handleVoiceSnoozeConfirmed(int minutes) {
+  void _handleVoiceSnoozeConfirmed(int minutes, [int? doseIndex]) {
     if (!mounted) return;
     if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
       return;
     }
 
-    final dose = _doses[_currentIndex];
+    final index = doseIndex ?? _currentIndex;
+
+    if (index < 0 || index >= _doses.length) {
+      return;
+    }
+
+    final dose = _doses[index];
+
+    if (dose.hasBeenSnoozed) {
+      setState(() {
+        dose.status = DoseStatus.missed;
+      });
+
+      _apiConfirmMissed(dose, reason: 'repeated_snooze_attempt_voice');
+
+      _showResultCard(
+        title: 'نعتذر، لا يمكن تأجيل الجرعة مرة أخرى',
+        subtitle: 'تم تسجيل الجرعة كفائتة\nوسيتم تبليغ مقدم الرعاية',
+        icon: Icons.notifications_active_rounded,
+        iconBgColor: _C.warningBg,
+        iconColor: _C.warning,
+        onDismiss: _moveToNextDose,
+      );
+      return;
+    }
 
     setState(() {
       dose.status = DoseStatus.snoozed;
@@ -1076,7 +1191,7 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
     );
   }
 
-  void _showVoiceAssistantSheet() {
+  void _showVoiceAssistantSheet([int? doseIndex]) {
     final elderId = _elder?.id ?? currentElder?.id;
 
     if (elderId == null) {
@@ -1091,7 +1206,9 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       return;
     }
 
-    if (_doses.isEmpty || _currentIndex < 0 || _currentIndex >= _doses.length) {
+    final index = doseIndex ?? _currentIndex;
+
+    if (_doses.isEmpty || index < 0 || index >= _doses.length) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1111,10 +1228,11 @@ class _DoseAlertFlowScreenState extends State<DoseAlertFlowScreen> {
       ),
       builder: (ctx) => _VoiceAssistantBottomSheet(
         elderId: elderId,
-        currentDose: _doses[_currentIndex],
-        onTakenConfirmed: _handleVoiceTakenConfirmed,
-        onMissedConfirmed: _handleVoiceMissedConfirmed,
-        onSnoozeConfirmed: _handleVoiceSnoozeConfirmed,
+        currentDose: _doses[index],
+        onTakenConfirmed: () => _handleVoiceTakenConfirmed(index),
+        onMissedConfirmed: () => _handleVoiceMissedConfirmed(index),
+        onSnoozeConfirmed: (minutes) =>
+            _handleVoiceSnoozeConfirmed(minutes, index),
       ),
     );
   }
@@ -1191,17 +1309,21 @@ class _ActiveScreen extends StatelessWidget {
                 child: GestureDetector(
                   onTap: onVoiceTap,
                   child: Container(
-                    width: 56,
-                    height: 56,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
-                      color: _C.primary.withOpacity(0.1),
+                      color: _C.primary,
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _C.primary.withOpacity(0.3),
-                        width: 2,
-                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _C.primary.withOpacity(0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.mic, color: _C.primary, size: 32),
+                    child: const Icon(Icons.mic_rounded,
+                        color: Colors.white, size: 30),
                   ),
                 ),
               ),
@@ -1528,13 +1650,9 @@ class _SummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final taken = doses.where((d) => d.status == DoseStatus.taken).length;
-    final missed = doses
-        .where(
-          (d) =>
-              d.status == DoseStatus.missed ||
-              d.status == DoseStatus.noResponse,
-        )
-        .length;
+    final missed = doses.where((d) => d.status == DoseStatus.missed).length;
+    final noResponse =
+        doses.where((d) => d.status == DoseStatus.noResponse).length;
     final snoozed = doses.where((d) => d.status == DoseStatus.snoozed).length;
 
     final IconData icon;
@@ -1544,22 +1662,7 @@ class _SummaryScreen extends StatelessWidget {
     final String subtitle;
     final List<_SummaryStatusCard> statusCards = [];
 
-    if (isTimerExpired) {
-      icon = Icons.hourglass_disabled_rounded;
-      iconBgColor = _C.warningBg;
-      iconColor = _C.warning;
-      title = 'انتهى وقت الجرعة';
-      subtitle = 'تم تسجيل الجرعة كجرعة فائتة\nتم إشعار مقدم الرعاية';
-      statusCards.add(
-        _SummaryStatusCard(
-          icon: Icons.notifications_active_rounded,
-          iconBgColor: _C.successBg,
-          iconColor: _C.primary,
-          line1: 'تم الإشعار',
-          line2: 'مقدم الرعاية على اطلاع',
-        ),
-      );
-    } else if (taken == doses.length) {
+    if (taken == doses.length && doses.isNotEmpty) {
       icon = Icons.check_circle_rounded;
       iconBgColor = _C.successBg;
       iconColor = _C.primary;
@@ -1574,12 +1677,29 @@ class _SummaryScreen extends StatelessWidget {
           line2: 'أكملت جرعات اليوم بنجاح',
         ),
       );
+    } else if (isTimerExpired && taken == 0 && snoozed == 0 && missed == 0) {
+      icon = Icons.hourglass_disabled_rounded;
+      iconBgColor = _C.warningBg;
+      iconColor = _C.warning;
+      title = 'انتهى وقت الجرعة';
+      subtitle = 'لم يتم التفاعل مع الجرعة\nتم إشعار مقدم الرعاية';
+      statusCards.add(
+        _SummaryStatusCard(
+          icon: Icons.notifications_active_rounded,
+          iconBgColor: _C.successBg,
+          iconColor: _C.primary,
+          line1: 'عدم تفاعل',
+          line2: 'تم تبليغ مقدم الرعاية',
+        ),
+      );
     } else {
       icon = Icons.medical_services_rounded;
       iconBgColor = _C.successBg;
       iconColor = _C.primary;
       title = 'كل خطوة لصحتك لها قيمة';
-      subtitle = 'تم تحديث حالة الجرعة وإشعار مقدم الرعاية';
+      subtitle = isTimerExpired
+          ? 'تم حفظ ما تفاعلت معه\nوتم تسجيل الجرعات غير المتفاعل معها'
+          : 'تم تحديث حالة الجرعة وإشعار مقدم الرعاية';
 
       if (taken > 0) {
         statusCards.add(
@@ -1592,25 +1712,39 @@ class _SummaryScreen extends StatelessWidget {
           ),
         );
       }
+
       if (snoozed > 0) {
         statusCards.add(
           _SummaryStatusCard(
             icon: Icons.access_time_filled_rounded,
             iconBgColor: _C.snoozeBg,
             iconColor: _C.warning,
-            line1: 'تم التأجيل',
+            line1: 'تم تأجيل $snoozed جرعة',
             line2: 'التذكير مضبوط',
           ),
         );
       }
+
       if (missed > 0) {
+        statusCards.add(
+          _SummaryStatusCard(
+            icon: Icons.warning_amber_rounded,
+            iconBgColor: _C.warningBg,
+            iconColor: _C.warning,
+            line1: 'تم تسجيل $missed جرعة فائتة',
+            line2: 'تم تحديث الحالة',
+          ),
+        );
+      }
+
+      if (noResponse > 0) {
         statusCards.add(
           _SummaryStatusCard(
             icon: Icons.notifications_active_rounded,
             iconBgColor: _C.successBg,
             iconColor: _C.primary,
-            line1: 'تم الإشعار',
-            line2: 'مقدم الرعاية على اطلاع',
+            line1: 'عدم تفاعل مع $noResponse جرعة',
+            line2: 'تم تبليغ مقدم الرعاية',
           ),
         );
       }
@@ -2151,17 +2285,60 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
   _VoiceDoseAction? _detectCompletedAction(Map<String, dynamic> response) {
     final intent = response['nlu_intent']?.toString() ?? '';
     final spokenText = response['spoken_text']?.toString() ?? '';
+    final inputText = response['input_text']?.toString() ?? '';
     final dbResponse = response['db_response'];
 
     debugPrint('[DoseVoice] detect completed action, intent = $intent');
     debugPrint('[DoseVoice] pending action = $_pendingAction');
+    debugPrint('[DoseVoice] spokenText = $spokenText');
+
+    final statusText =
+        dbResponse is Map ? dbResponse['status']?.toString() ?? '' : '';
+
+    final combinedText = '$inputText $spokenText $statusText';
+
+    // Some backend responses are final immediately, especially repeated snooze.
+    // In that case the assistant already wrote the final result to the DB,
+    // so the bottom sheet should close and the dose screen should update.
+    final looksFinalMissed = combinedText.contains('فائتة') ||
+        combinedText.contains('فائته') ||
+        combinedText.contains('عدم تناول') ||
+        combinedText.contains('لم تتناول') ||
+        combinedText.contains('تم تبليغ') ||
+        combinedText.contains('مقدم الرعاية');
+
+    if (looksFinalMissed &&
+        (intent == 'SnoozeMedication' ||
+            intent == 'Confirm' ||
+            intent == 'MarkDoseMissed')) {
+      debugPrint('[DoseVoice] final missed action detected');
+      return _VoiceDoseAction.missed;
+    }
+
+    final looksFinalSnoozed = combinedText.contains('تم تأجيل') ||
+        combinedText.contains('تأجيل التذكير') ||
+        combinedText.contains('سيتم تذكيرك');
+
+    if (looksFinalSnoozed &&
+        (intent == 'SnoozeMedication' || intent == 'Confirm')) {
+      debugPrint('[DoseVoice] final snoozed action detected');
+      return _VoiceDoseAction.snoozed;
+    }
+
+    final looksFinalTaken = combinedText.contains('تم تأكيد أخذ') ||
+        combinedText.contains('تم تسجيل الجرعة كمأخوذة') ||
+        combinedText.contains('تم تسجيلها كمأخوذة') ||
+        combinedText.contains('أخذ الجرعة');
+
+    if (looksFinalTaken && (intent == 'MarkDoseTaken' || intent == 'Confirm')) {
+      debugPrint('[DoseVoice] final taken action detected');
+      return _VoiceDoseAction.taken;
+    }
 
     if (intent != 'Confirm' || _pendingAction == null) {
       return null;
     }
 
-    final statusText =
-        dbResponse is Map ? dbResponse['status']?.toString() : '';
     final looksSuccessful = statusText == 'success' ||
         spokenText.contains('تم') ||
         spokenText.contains('تسجيل') ||
@@ -2287,7 +2464,7 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
       case _VoiceState.listening:
         return 'يستمع الآن';
       case _VoiceState.processing:
-        return 'جارِ معالجة طلبك';
+        return 'جارٍ معالجة طلبك';
       case _VoiceState.responding:
         return 'جاري الرد';
     }
@@ -2298,7 +2475,7 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
       case _VoiceState.listening:
         return 'تحدث الآن، ثم اضغط المايك عند الانتهاء';
       case _VoiceState.processing:
-        return 'يرجى الانتظار قليلاً';
+        return 'انتظر قليلًا...';
       case _VoiceState.responding:
         return _assistantSpokenText.isNotEmpty
             ? _assistantSpokenText
@@ -2359,6 +2536,10 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                   onTap: _handleMicTap,
                   child: _buildIconArea(),
                 ),
+                const SizedBox(height: 16),
+                // ---- زر "اضغط هنا عند الانتهاء" — يظهر في حالة الاستماع فقط ----
+                if (_voiceState == _VoiceState.listening)
+                  _DoseStopListeningPill(onTap: _handleMicTap),
                 const SizedBox(height: 20),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 350),
@@ -2370,12 +2551,12 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                         style: const TextStyle(
                           fontFamily: _T.font,
                           fontSize: 26,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
                           color: _C.black,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         _stateSubtitle,
                         style: const TextStyle(
@@ -2385,12 +2566,14 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
                           color: _C.grey,
                         ),
                         textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 28),
-                _buildSuggestions(),
+                const SizedBox(height: 24),
+                if (_voiceState == _VoiceState.listening) _buildSuggestions(),
                 const SizedBox(height: 8),
               ],
             ),
@@ -2447,12 +2630,22 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: _C.primary, width: 4),
+              border: Border.all(
+                color: _C.primary,
+                width: _voiceState == _VoiceState.listening ? 5 : 4,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 15,
+                  color: _voiceState == _VoiceState.listening
+                      ? _C.primary.withOpacity(0.30)
+                      : Colors.black.withOpacity(0.10),
+                  blurRadius: _voiceState == _VoiceState.listening ? 22 : 15,
                   offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
@@ -2486,10 +2679,10 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'مثال على ما يمكن قوله:',
+          'جرّب أن تقول:',
           style: TextStyle(
             fontFamily: _T.font,
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.w400,
             color: _C.grey,
           ),
@@ -2500,19 +2693,19 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
           runSpacing: 10,
           children: phrases.map((phrase) {
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
                 color: _C.bg,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(28),
                 border:
-                    Border.all(color: _C.primary.withOpacity(0.25), width: 1.5),
+                    Border.all(color: _C.primary.withOpacity(0.40), width: 1.5),
               ),
               child: Text(
                 phrase,
                 style: TextStyle(
                   fontFamily: _T.font,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
                   color: _C.primary,
                 ),
               ),
@@ -2520,6 +2713,57 @@ class _VoiceAssistantBottomSheetState extends State<_VoiceAssistantBottomSheet>
           }).toList(),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// مكوّن: زر "اضغط هنا عند الانتهاء" — Pill واضح وقابل للنقر
+// يظهر أسفل دائرة المايكروفون مباشرةً في حالة الاستماع فقط
+// ---------------------------------------------------------------------------
+class _DoseStopListeningPill extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _DoseStopListeningPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+        decoration: BoxDecoration(
+          color: _C.primary,
+          borderRadius: BorderRadius.circular(50),
+          boxShadow: [
+            BoxShadow(
+              color: _C.primary.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(
+              Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+            SizedBox(width: 10),
+            Text(
+              'اضغط هنا عند الانتهاء',
+              style: TextStyle(
+                fontFamily: _T.font,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -250,6 +250,30 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
         children: [
           Row(
             children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'الالتزام هذا الأسبوع',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                      fontFamily: 'Tajawal',
+                    ),
+                  ),
+                  Text(
+                    '$adherence%',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 46,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Tajawal',
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
               Container(
                 width: 80,
                 height: 80,
@@ -266,28 +290,6 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                   color: Colors.white,
                   size: 32,
                 ),
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'الالتزام هذا الأسبوع',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
-                      fontFamily: 'Tajawal',
-                    ),
-                  ),
-                  Text(
-                    '$adherence%',
-                    style: const TextStyle(
-                      fontSize: 46,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Tajawal',
-                    ),
-                  ),
-                ],
               ),
             ],
           ),

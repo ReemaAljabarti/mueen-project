@@ -691,7 +691,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         children: [
           const SizedBox(height: 48),
           _buildIconArea(),
-          const SizedBox(height: 36),
+          const SizedBox(height: 20),
+          // ---- زر "اضغط هنا عند الانتهاء" — يظهر في حالة الاستماع فقط ----
+          if (_state == VoiceAssistantState.listening)
+            _StopListeningPill(onTap: _handleMicTap),
+          const SizedBox(height: 24),
           _buildTextContent(),
           const SizedBox(height: 40),
           if (_state == VoiceAssistantState.listening) ...[
@@ -753,7 +757,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
                 ),
               ),
             ),
-            // الدائرة الرئيسية
+            // الدائرة الرئيسية — مع مؤشر "اضغط" في حالة الاستماع
             Container(
               width: 130,
               height: 130,
@@ -762,11 +766,19 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
                     ? Colors.white
                     : Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: _AppColors.primary, width: 4),
+                border: Border.all(
+                  color: _state == VoiceAssistantState.listening
+                      ? _AppColors.primary
+                      : _AppColors.primary,
+                  width: _state == VoiceAssistantState.listening ? 5 : 4,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.10),
-                    blurRadius: 15,
+                    color: _state == VoiceAssistantState.listening
+                        ? _AppColors.primary.withOpacity(0.30)
+                        : Colors.black.withOpacity(0.10),
+                    blurRadius:
+                        _state == VoiceAssistantState.listening ? 20 : 15,
                     offset: const Offset(0, 10),
                   ),
                   BoxShadow(
@@ -819,7 +831,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
         break;
       case VoiceAssistantState.processing:
         title = 'جارٍ معالجة طلبك';
-        subtitle = 'يرجى الانتظار قليلًا';
+        subtitle = 'انتظر قليلًا...';
         break;
       case VoiceAssistantState.responding:
         title = 'جاري الرد';
@@ -877,6 +889,57 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen>
           ),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// مكوّن: زر "اضغط هنا عند الانتهاء" — Pill واضح وقابل للنقر
+// يظهر أسفل دائرة المايكروفون مباشرةً في حالة الاستماع فقط
+// ---------------------------------------------------------------------------
+class _StopListeningPill extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _StopListeningPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+        decoration: BoxDecoration(
+          color: _AppColors.primary,
+          borderRadius: BorderRadius.circular(50),
+          boxShadow: [
+            BoxShadow(
+              color: _AppColors.primary.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(
+              Icons.check_circle_outline_rounded,
+              color: Colors.white,
+              size: 26,
+            ),
+            SizedBox(width: 10),
+            Text(
+              'اضغط هنا عند الانتهاء',
+              style: TextStyle(
+                fontFamily: 'Tajawal',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

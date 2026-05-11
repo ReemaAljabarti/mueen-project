@@ -194,46 +194,47 @@ class _DayCard extends StatelessWidget {
   Widget _buildTodayContent() {
     return Row(
       textDirection: TextDirection.rtl,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                dayName,
-                style: const TextStyle(
-                  fontFamily: 'Tajawal',
-                  fontSize: 28,
-                  fontWeight: FontWeight.normal,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'اليوم',
-                  style: TextStyle(
-                    fontFamily: 'Tajawal',
-                    fontSize: 18,
-                    fontWeight: FontWeight.normal,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
         const _CalendarCheckIcon(
           color: AppColors.primary,
           size: 30,
           opacity: 1.0,
+        ),
+        const SizedBox(width: 16),
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              dayName,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'Tajawal',
+                fontSize: 28,
+                fontWeight: FontWeight.normal,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'اليوم',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontFamily: 'Tajawal',
+                  fontSize: 18,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -242,24 +243,23 @@ class _DayCard extends StatelessWidget {
   Widget _buildNormalContent() {
     return Row(
       textDirection: TextDirection.rtl,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(
-            dayName,
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontFamily: 'Tajawal',
-              fontSize: 24,
-              fontWeight: FontWeight.normal,
-              color: Color(0xFF8A9AA0),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
         const _CalendarCheckIcon(
           color: Color(0xFF8A9AA0),
           size: 24,
           opacity: 0.5,
+        ),
+        const SizedBox(width: 16),
+        Text(
+          dayName,
+          textAlign: TextAlign.right,
+          style: const TextStyle(
+            fontFamily: 'Tajawal',
+            fontSize: 24,
+            fontWeight: FontWeight.normal,
+            color: Color(0xFF8A9AA0),
+          ),
         ),
       ],
     );

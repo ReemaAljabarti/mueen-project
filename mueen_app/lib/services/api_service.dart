@@ -12,9 +12,9 @@ class ApiService {
   // static const String baseUrl = 'http://10.0.2.2:8001';
 
   // Real device: منزل
-  // static const String baseUrl = 'http://192.168.1.14:8001';
+  static const String baseUrl = 'http://192.168.1.14:8001';
 
-  static const String baseUrl = 'http://172.20.10.7:8001'; // شكبة اسيل
+  //static const String baseUrl = 'http://172.20.10.7:8001'; // شكبة اسيل
 
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,

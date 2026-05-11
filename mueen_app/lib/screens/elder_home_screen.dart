@@ -451,14 +451,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       greeting = 'مساء الخير';
     }
 
-    final String greetingText = elderName.isEmpty
-        ? greeting
-        : '$greeting، $elderName';
+    final String greetingText =
+        elderName.isEmpty ? greeting : '$greeting، $elderName';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
-      color: AppColors.background,
+      color: Colors.white,
       child: Row(
         children: [
           SizedBox(
