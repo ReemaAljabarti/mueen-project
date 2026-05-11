@@ -43,3 +43,22 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# APK / release artifacts
+*.apk
+*.aab
+
+# Backend / local secrets
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary Excel files
+~$*.xlsx
+~$*.xls

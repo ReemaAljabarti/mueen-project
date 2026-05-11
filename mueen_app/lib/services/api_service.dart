@@ -12,10 +12,14 @@ class ApiService {
   // static const String baseUrl = 'http://10.0.2.2:8001';
 
   // Real device: منزل
-  static const String baseUrl = 'http://192.168.1.14:8001';
+  //static const String baseUrl = 'http://192.168.1.14:8001';
 
   //static const String baseUrl = 'http://172.20.10.7:8001'; // شكبة اسيل
 
+// for ngrok tunnel so that real device can access local backend without needing to
+// be on the same wifi network
+
+  static const String baseUrl = 'https://herself-popcorn-overdrawn.ngrok-free.dev';
   static Future<Map<String, dynamic>> caregiverSignup({
     required String fullName,
     required String phoneNumber,
