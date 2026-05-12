@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import 'add_medication_success_screen.dart';
 import '../drug_interaction_alert_screen.dart';
+import '../../services/medication_time_service.dart';
+import '../../services/medication_time_service.dart';
 
 class ReminderReviewScreen extends StatelessWidget {
   final int elderId;
@@ -38,56 +40,10 @@ class ReminderReviewScreen extends StatelessWidget {
   });
 
   List<String> _generateTimes() {
-    final List<String> times = [];
-
-    final normalized =
-        firstReminderTime.trim().isEmpty ? '08:00 ص' : firstReminderTime.trim();
-
-    final regex = RegExp(r'^\s*(\d{1,2})\s*:\s*(\d{2})\s*([صم])\s*$');
-    final match = regex.firstMatch(normalized);
-
-    if (match == null) {
-      return [normalized];
-    }
-
-    int hour12 = int.parse(match.group(1)!);
-    final minute = int.parse(match.group(2)!);
-    final period = match.group(3)!;
-
-    int hour24;
-    if (period == 'ص') {
-      hour24 = (hour12 == 12) ? 0 : hour12;
-    } else {
-      hour24 = (hour12 == 12) ? 12 : hour12 + 12;
-    }
-
-    final intervalHours = 24 ~/ timesPerDay;
-
-    for (int i = 0; i < timesPerDay; i++) {
-      final currentHour24 = (hour24 + (i * intervalHours)) % 24;
-
-      String currentPeriod;
-      int currentHour12;
-
-      if (currentHour24 == 0) {
-        currentHour12 = 12;
-        currentPeriod = 'ص';
-      } else if (currentHour24 < 12) {
-        currentHour12 = currentHour24;
-        currentPeriod = 'ص';
-      } else if (currentHour24 == 12) {
-        currentHour12 = 12;
-        currentPeriod = 'م';
-      } else {
-        currentHour12 = currentHour24 - 12;
-        currentPeriod = 'م';
-      }
-
-      final minuteStr = minute.toString().padLeft(2, '0');
-      times.add('$currentHour12:$minuteStr $currentPeriod');
-    }
-
-    return times;
+    return MedicationTimeService.generateMedicationTimes(
+      firstReminderTime: firstReminderTime,
+      timesPerDay: timesPerDay,
+    );
   }
 
   Future<void> _saveMedication(BuildContext context) async {

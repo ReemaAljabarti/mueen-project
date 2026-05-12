@@ -46,6 +46,12 @@ class _AddElderBasicInfoScreenState extends State<AddElderBasicInfoScreen> {
       _confirmPasswordController.text.isNotEmpty &&
       _passwordController.text == _confirmPasswordController.text;
 
+  bool get _isPhoneValid {
+    final phone = _phoneController.text.trim();
+
+    return RegExp(r'^05\d{8}$').hasMatch(phone);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +76,7 @@ class _AddElderBasicInfoScreenState extends State<AddElderBasicInfoScreen> {
     setState(() {
       _isButtonEnabled = _fullNameController.text.isNotEmpty &&
           _phoneController.text.isNotEmpty &&
+          _isPhoneValid &&
           _passwordController.text.isNotEmpty &&
           _confirmPasswordController.text.isNotEmpty &&
           _selectedGender != null &&
@@ -325,9 +332,21 @@ class _AddElderBasicInfoScreenState extends State<AddElderBasicInfoScreen> {
               textAlign: TextAlign.right,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                hintText: '05XXXXXXX',
+                hintText: '05XXXXXXXX',
               ),
             ),
+            if (_phoneController.text.isNotEmpty && !_isPhoneValid) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             const Text(
               'كلمة المرور *',

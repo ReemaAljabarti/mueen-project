@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/elder_medication.dart';
 import '../theme/app_theme.dart';
+import '../services/medication_time_service.dart';
 
 class MedicationDetailsScreen extends StatelessWidget {
   final ElderMedication? medication;
@@ -9,6 +10,19 @@ class MedicationDetailsScreen extends StatelessWidget {
     super.key,
     this.medication,
   });
+
+  String _getMedicationTimesText(ElderMedication? med) {
+    if (med == null) {
+      return 'غير محدد';
+    }
+
+    final times = MedicationTimeService.generateMedicationTimes(
+      firstReminderTime: med.firstReminderTime,
+      timesPerDay: med.timesPerDay,
+    );
+
+    return times.join('، ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +109,7 @@ class MedicationDetailsScreen extends StatelessWidget {
               ),
               _buildDetailRow(
                 'أوقات الدواء',
-                med?.firstReminderTime ?? 'غير محدد',
+                _getMedicationTimesText(med),
               ),
               _buildDetailRow(
                 'التعليمات',

@@ -393,6 +393,13 @@ def delete_elder_medication(elder_medication_id: int):
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Delete doses for this medication first
+    cursor.execute("""
+        DELETE FROM medication_doses
+        WHERE elder_medication_id = ?
+    """, (elder_medication_id,))
+
+    # Delete the medication plan
     cursor.execute("""
         DELETE FROM elder_medications
         WHERE id = ?
@@ -412,9 +419,12 @@ def update_elder_medication(
     dosage_unit: str,
     first_reminder_time: str,
 ):
+    from datetime import datetime
+
     conn = get_connection()
     cursor = conn.cursor()
 
+    # 1) Update the medication plan in elder_medications
     cursor.execute("""
         UPDATE elder_medications
         SET
@@ -431,12 +441,69 @@ def update_elder_medication(
         elder_medication_id,
     ))
 
-    conn.commit()
     updated_count = cursor.rowcount
+
+    if updated_count > 0:
+        today = datetime.now().strftime("%Y-%m-%d")
+        first_time = normalize_time_for_db(first_reminder_time)
+
+        # 2) Get elder_id and times_per_day for this medication
+        cursor.execute("""
+            SELECT
+                elder_id,
+                times_per_day
+            FROM elder_medications
+            WHERE id = ?
+            LIMIT 1
+        """, (elder_medication_id,))
+
+        med = cursor.fetchone()
+
+        if first_time and med:
+            elder_id = med["elder_id"]
+            times_per_day = med["times_per_day"] or 1
+
+            # 3) Generate the new dose times based on the updated first time
+            new_times = generate_dose_times_for_day(
+                first_time,
+                times_per_day,
+            )
+
+            # 4) Delete today's old doses for this medication
+            cursor.execute("""
+                DELETE FROM medication_doses
+                WHERE elder_medication_id = ?
+                  AND dose_date = ?
+            """, (
+                elder_medication_id,
+                today,
+            ))
+
+            # 5) Insert today's new doses
+            for scheduled_time in new_times:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO medication_doses (
+                        elder_medication_id,
+                        elder_id,
+                        scheduled_time,
+                        dose_date,
+                        status,
+                        snooze_count,
+                        created_at,
+                        last_updated_at
+                    )
+                    VALUES (?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (
+                    elder_medication_id,
+                    elder_id,
+                    scheduled_time,
+                    today,
+                ))
+
+    conn.commit()
     conn.close()
 
     return updated_count
-
 
 def normalize_gtin_for_lookup(gtin: str) -> str:
     digits = ''.join(ch for ch in gtin if ch.isdigit())
@@ -727,6 +794,7 @@ def generate_today_doses(elder_id: int):
     medication_doses = today's actual dose instances.
 
     This function is safe to call multiple times because it prevents duplicates.
+    If times_per_day is more than 1, it creates multiple doses for the same day.
     """
     from datetime import datetime
 
@@ -752,6 +820,7 @@ def generate_today_doses(elder_id: int):
             id,
             elder_id,
             first_reminder_time,
+            times_per_day,
             days_pattern
         FROM elder_medications
         WHERE elder_id = ?
@@ -764,8 +833,9 @@ def generate_today_doses(elder_id: int):
     for med in medications:
         elder_medication_id = med["id"]
         days_pattern = (med["days_pattern"] or "").strip().lower()
+        times_per_day = med["times_per_day"] or 1
 
-        # Only generate a dose if the medication is scheduled for today.
+        # Only generate doses if the medication is scheduled for today.
         if days_pattern != "daily":
             scheduled_days = [
                 day.strip()
@@ -777,53 +847,56 @@ def generate_today_doses(elder_id: int):
                 skipped_count += 1
                 continue
 
-        scheduled_time = normalize_time_for_db(med["first_reminder_time"])
+        first_time = normalize_time_for_db(med["first_reminder_time"])
 
-        if not scheduled_time:
+        if not first_time:
             skipped_count += 1
             continue
 
-        cursor.execute("""
-            SELECT id
-            FROM medication_doses
-            WHERE elder_medication_id = ?
-              AND elder_id = ?
-              AND scheduled_time = ?
-              AND dose_date = ?
-            LIMIT 1
-        """, (
-            elder_medication_id,
-            elder_id,
-            scheduled_time,
-            today,
-        ))
+        dose_times = generate_dose_times_for_day(first_time, times_per_day)
 
-        existing = cursor.fetchone()
-
-        if existing:
-            skipped_count += 1
-            continue
-
-        cursor.execute("""
-            INSERT INTO medication_doses (
+        for scheduled_time in dose_times:
+            cursor.execute("""
+                SELECT id
+                FROM medication_doses
+                WHERE elder_medication_id = ?
+                  AND elder_id = ?
+                  AND scheduled_time = ?
+                  AND dose_date = ?
+                LIMIT 1
+            """, (
                 elder_medication_id,
                 elder_id,
                 scheduled_time,
-                dose_date,
-                status,
-                snooze_count,
-                created_at,
-                last_updated_at
-            )
-            VALUES (?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """, (
-            elder_medication_id,
-            elder_id,
-            scheduled_time,
-            today,
-        ))
+                today,
+            ))
 
-        created_count += 1
+            existing = cursor.fetchone()
+
+            if existing:
+                skipped_count += 1
+                continue
+
+            cursor.execute("""
+                INSERT INTO medication_doses (
+                    elder_medication_id,
+                    elder_id,
+                    scheduled_time,
+                    dose_date,
+                    status,
+                    snooze_count,
+                    created_at,
+                    last_updated_at
+                )
+                VALUES (?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (
+                elder_medication_id,
+                elder_id,
+                scheduled_time,
+                today,
+            ))
+
+            created_count += 1
 
     conn.commit()
     conn.close()
@@ -834,7 +907,37 @@ def generate_today_doses(elder_id: int):
         "created_count": created_count,
         "skipped_count": skipped_count,
         "total_checked": len(medications),
-    } 
+    }
+
+def generate_dose_times_for_day(first_time: str, times_per_day: int):
+    """
+    Generate dose times in HH:MM format based on:
+    - first_time: first dose time in HH:MM
+    - times_per_day: number of doses per day
+
+    Examples:
+    09:00 + 2 doses -> 09:00, 21:00
+    08:00 + 3 doses -> 08:00, 16:00, 00:00
+    """
+    try:
+        hour, minute = first_time.split(":")
+        start_hour = int(hour)
+        start_minute = int(minute)
+    except ValueError:
+        return [first_time]
+
+    if times_per_day <= 1:
+        return [f"{start_hour:02d}:{start_minute:02d}"]
+
+    interval_hours = 24 // times_per_day
+
+    dose_times = []
+
+    for index in range(times_per_day):
+        dose_hour = (start_hour + (index * interval_hours)) % 24
+        dose_times.append(f"{dose_hour:02d}:{start_minute:02d}")
+
+    return dose_times
 
 def normalize_time_for_db(time_value: str | None):
     """

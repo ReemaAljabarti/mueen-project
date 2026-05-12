@@ -23,6 +23,19 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
   bool _isButtonEnabled = false;
   bool _isLoading = false;
   String? _errorMessage;
+  bool get _isPhoneValid {
+    final phone = _phoneController.text.trim();
+
+    return RegExp(r'^05\d{8}$').hasMatch(phone);
+  }
+
+  bool get _isEmailValid {
+    final email = _emailController.text.trim();
+
+    return RegExp(
+      r'^[\w\.-]+@[\w\.-]+\.\w{2,}$',
+    ).hasMatch(email);
+  }
 
   bool get _hasMinLength => _passwordController.text.length >= 8;
 
@@ -70,7 +83,9 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
   void _validateForm() {
     setState(() {
       _isButtonEnabled = _phoneController.text.isNotEmpty &&
+          _isPhoneValid &&
           _emailController.text.isNotEmpty &&
+          _isEmailValid &&
           _passwordController.text.isNotEmpty &&
           _confirmPasswordController.text.isNotEmpty &&
           _fullNameController.text.isNotEmpty &&
@@ -285,10 +300,22 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
               textAlign: TextAlign.right,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                hintText: '05XXXXXXX',
+                hintText: '05XXXXXXXX',
                 prefixIcon: Icon(Icons.phone_android),
               ),
             ),
+            if (_phoneController.text.isNotEmpty && !_isPhoneValid) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'رقم الهاتف يجب أن يبدأ بـ 05 ويتكون من 10 أرقام',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Email field
@@ -310,6 +337,18 @@ class _CaregiverSignupScreenState extends State<CaregiverSignupScreen> {
                 prefixIcon: Icon(Icons.email_outlined),
               ),
             ),
+            if (_emailController.text.isNotEmpty && !_isEmailValid) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'يرجى إدخال بريد إلكتروني صحيح',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Password field

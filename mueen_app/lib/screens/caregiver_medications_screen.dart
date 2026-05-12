@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/elder.dart';
 import '../models/elder_medication.dart';
 import '../services/api_service.dart';
+import '../services/medication_time_service.dart';
 import '../theme/app_theme.dart';
 import '../dialogs/medication_management_bottom_sheet.dart';
 import '../dialogs/delete_confirmation_dialog.dart';
@@ -331,44 +332,6 @@ class _CaregiverMedicationsScreenState
     );
   }
 
-  Widget _buildMedicationImage(String? gtin) {
-    if (gtin == null || gtin.trim().isEmpty) {
-      return const Icon(
-        Icons.medication,
-        color: Color(0xFF16B6C8),
-      );
-    }
-
-    final cleanGtin = gtin.replaceAll(RegExp(r'[^0-9]'), '');
-    final padded14 = cleanGtin.padLeft(14, '0');
-
-    final paths = [
-      'assets/drug_images/$cleanGtin.jpg',
-      'assets/drug_images/$cleanGtin.png',
-      'assets/drug_images/$padded14.jpg',
-      'assets/drug_images/$padded14.png',
-    ];
-
-    Widget fallback(int index) {
-      if (index >= paths.length) {
-        return const Icon(
-          Icons.medication,
-          color: Color(0xFF16B6C8),
-        );
-      }
-
-      return Image.asset(
-        paths[index],
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          return fallback(index + 1);
-        },
-      );
-    }
-
-    return fallback(0);
-  }
-
   Widget _buildSafetyCheckCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -411,8 +374,10 @@ class _CaregiverMedicationsScreenState
                   color: const Color(0xFFFFF3D6),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.health_and_safety,
-                    color: Color(0xFF663C00)),
+                child: const Icon(
+                  Icons.health_and_safety,
+                  color: Color(0xFF663C00),
+                ),
               ),
             ],
           ),
@@ -425,7 +390,8 @@ class _CaregiverMedicationsScreenState
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               child: const Text(
                 'عرض',
@@ -483,15 +449,19 @@ class _CaregiverMedicationsScreenState
       ];
     }
 
-    final filtered = _medications.where((m) {
-      if (_selectedFilter == 'الكل') return true;
-      return _periodOfMedication(m) == _selectedFilter;
-    }).toList();
+    final showMorning =
+        _selectedFilter == 'الكل' || _selectedFilter == 'الصباح';
 
-    final morning =
-        filtered.where((m) => _periodOfMedication(m) == 'الصباح').toList();
-    final evening =
-        filtered.where((m) => _periodOfMedication(m) == 'المساء').toList();
+    final showEvening =
+        _selectedFilter == 'الكل' || _selectedFilter == 'المساء';
+
+    final morning = showMorning
+        ? _medications.where(_hasMorningTime).toList()
+        : <ElderMedication>[];
+
+    final evening = showEvening
+        ? _medications.where(_hasEveningTime).toList()
+        : <ElderMedication>[];
 
     final List<Widget> list = [];
 
@@ -501,7 +471,10 @@ class _CaregiverMedicationsScreenState
         morning.map(
           (m) => Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: _buildMedicationCard(m),
+            child: _buildMedicationCard(
+              m,
+              period: 'الصباح',
+            ),
           ),
         ),
       );
@@ -513,7 +486,10 @@ class _CaregiverMedicationsScreenState
         evening.map(
           (m) => Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: _buildMedicationCard(m),
+            child: _buildMedicationCard(
+              m,
+              period: 'المساء',
+            ),
           ),
         ),
       );
@@ -538,20 +514,40 @@ class _CaregiverMedicationsScreenState
     return list;
   }
 
-  String _periodOfMedication(ElderMedication medication) {
-    final time = medication.firstReminderTime;
+  List<String> _getMedicationTimesForPeriod(
+    ElderMedication medication,
+    String period,
+  ) {
+    final allTimes = MedicationTimeService.generateMedicationTimes(
+      firstReminderTime: medication.firstReminderTime,
+      timesPerDay: medication.timesPerDay,
+    );
 
-    final match = RegExp(r'^(\d{1,2})').firstMatch(time);
-    final hour = match != null ? int.tryParse(match.group(1)!) : null;
+    return allTimes.where((time) {
+      final minutes = MedicationTimeService.parseTimeToMinutes(time);
 
-    if (time.contains('م')) return 'المساء';
-    if (time.contains('ص')) return 'الصباح';
+      if (minutes == null) {
+        return period == 'الصباح';
+      }
 
-    if (hour != null) {
-      return hour >= 12 ? 'المساء' : 'الصباح';
-    }
+      if (period == 'الصباح') {
+        return minutes < 12 * 60;
+      }
 
-    return 'الصباح';
+      if (period == 'المساء') {
+        return minutes >= 12 * 60;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  bool _hasMorningTime(ElderMedication medication) {
+    return _getMedicationTimesForPeriod(medication, 'الصباح').isNotEmpty;
+  }
+
+  bool _hasEveningTime(ElderMedication medication) {
+    return _getMedicationTimesForPeriod(medication, 'المساء').isNotEmpty;
   }
 
   Widget _buildSectionTitle(String title) {
@@ -569,7 +565,10 @@ class _CaregiverMedicationsScreenState
     );
   }
 
-  Widget _buildMedicationCard(ElderMedication medication) {
+  Widget _buildMedicationCard(
+    ElderMedication medication, {
+    required String period,
+  }) {
     final title = (medication.displayNameForElder != null &&
             medication.displayNameForElder!.trim().isNotEmpty)
         ? medication.displayNameForElder!
@@ -578,7 +577,15 @@ class _CaregiverMedicationsScreenState
     final subtitle =
         '${medication.dosageForm ?? 'غير محدد'} - ${medication.dosageAmount} ${medication.dosageUnit}';
 
-    final time = medication.firstReminderTime;
+    final timesForPeriod = _getMedicationTimesForPeriod(medication, period);
+
+    final time = timesForPeriod.isNotEmpty
+        ? timesForPeriod.join('، ')
+        : MedicationTimeService.generateMedicationTimes(
+            firstReminderTime: medication.firstReminderTime,
+            timesPerDay: medication.timesPerDay,
+          ).join('، ');
+
     final note = medication.usageInstruction ??
         medication.foodGuideAr ??
         'لا توجد تعليمات';
@@ -714,7 +721,7 @@ class _CaregiverMedicationsScreenState
             child: MedicationImage(
               gtin: medication.gtin,
             ),
-          )
+          ),
         ],
       ),
     );
