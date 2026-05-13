@@ -5,7 +5,7 @@ import '../drug_interaction_alert_screen.dart';
 import '../../services/medication_time_service.dart';
 import '../../services/medication_time_service.dart';
 
-class ReminderReviewScreen extends StatelessWidget {
+class ReminderReviewScreen extends StatefulWidget {
   final int elderId;
   final int catalogMedicationId;
   final String medicationName;
@@ -39,28 +39,36 @@ class ReminderReviewScreen extends StatelessWidget {
     required this.firstReminderTime,
   });
 
+  @override
+  State<ReminderReviewScreen> createState() => _ReminderReviewScreenState();
+}
+
+class _ReminderReviewScreenState extends State<ReminderReviewScreen> {
+  bool _isSaving = false;
+
   List<String> _generateTimes() {
     return MedicationTimeService.generateMedicationTimes(
-      firstReminderTime: firstReminderTime,
-      timesPerDay: timesPerDay,
+      firstReminderTime: widget.firstReminderTime,
+      timesPerDay: widget.timesPerDay,
     );
   }
 
   Future<void> _saveMedication(BuildContext context) async {
     await ApiService.createElderMedication(
-      elderId: elderId,
-      catalogMedicationId: catalogMedicationId,
-      displayNameForElder: friendlyName.trim().isEmpty ? null : friendlyName,
-      dosageAmount: doseCount,
-      dosageUnit: doseUnit,
-      usageInstruction: usageInstruction,
-      shortDescription: shortDescription,
-      treatmentDurationType: treatmentDurationType,
-      startDate: startDate,
-      endDate: endDate,
-      timesPerDay: timesPerDay,
-      firstReminderTime: firstReminderTime,
-      daysPattern: daysPattern,
+      elderId: widget.elderId,
+      catalogMedicationId: widget.catalogMedicationId,
+      displayNameForElder:
+          widget.friendlyName.trim().isEmpty ? null : widget.friendlyName,
+      dosageAmount: widget.doseCount,
+      dosageUnit: widget.doseUnit,
+      usageInstruction: widget.usageInstruction,
+      shortDescription: widget.shortDescription,
+      treatmentDurationType: widget.treatmentDurationType,
+      startDate: widget.startDate,
+      endDate: widget.endDate,
+      timesPerDay: widget.timesPerDay,
+      firstReminderTime: widget.firstReminderTime,
+      daysPattern: widget.daysPattern,
     );
 
     if (!context.mounted) return;
@@ -69,21 +77,27 @@ class ReminderReviewScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => AddMedicationSuccessScreen(
-          medicationName: medicationName,
-          doseCount: doseCount,
-          doseUnit: doseUnit,
+          medicationName: widget.medicationName,
+          doseCount: widget.doseCount,
+          doseUnit: widget.doseUnit,
           times: _generateTimes(),
-          usageInstruction: usageInstruction,
+          usageInstruction: widget.usageInstruction,
         ),
       ),
     );
   }
 
   Future<void> _checkInteractionThenContinue(BuildContext context) async {
+    if (_isSaving) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
     try {
       final result = await ApiService.checkDrugInteraction(
-        elderId: elderId,
-        catalogMedicationId: catalogMedicationId,
+        elderId: widget.elderId,
+        catalogMedicationId: widget.catalogMedicationId,
       );
 
       final hasInteraction = result['has_interaction'] == true;
@@ -100,16 +114,40 @@ class ReminderReviewScreen extends StatelessWidget {
 
       if (!context.mounted) return;
 
+      setState(() {
+        _isSaving = false;
+      });
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => DrugInteractionAlertScreen(
             severity: severity,
-            currentMedicationName: medicationName,
+            currentMedicationName: widget.medicationName,
             existingMedicationName: existingMedicationName,
             noteAr: noteAr,
             onContinue: () async {
-              await _saveMedication(context);
+              if (_isSaving) return;
+
+              setState(() {
+                _isSaving = true;
+              });
+
+              try {
+                await _saveMedication(context);
+              } catch (e) {
+                if (!context.mounted) return;
+
+                setState(() {
+                  _isSaving = false;
+                });
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('تعذر حفظ الدواء'),
+                  ),
+                );
+              }
             },
             onCancel: () {
               Navigator.pop(context);
@@ -119,6 +157,10 @@ class ReminderReviewScreen extends StatelessWidget {
       );
     } catch (e) {
       if (!context.mounted) return;
+
+      setState(() {
+        _isSaving = false;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -139,11 +181,11 @@ class ReminderReviewScreen extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
         centerTitle: true,
         title: Text(
-          medicationName,
+          widget.medicationName,
           style: const TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -153,10 +195,12 @@ class ReminderReviewScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.close, color: Colors.black),
-            onPressed: () => Navigator.popUntil(
-              context,
-              ModalRoute.withName('/caregiver-medications'),
-            ),
+            onPressed: _isSaving
+                ? null
+                : () => Navigator.popUntil(
+                      context,
+                      ModalRoute.withName('/caregiver-medications'),
+                    ),
           ),
         ],
       ),
@@ -270,7 +314,7 @@ class ReminderReviewScreen extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  '$doseCount $doseUnit',
+                                  '${widget.doseCount} ${widget.doseUnit}',
                                   style: const TextStyle(
                                     color: Colors.grey,
                                     fontFamily: 'Tajawal',
@@ -283,8 +327,8 @@ class ReminderReviewScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    if (usageInstruction != null &&
-                        usageInstruction!.trim().isNotEmpty)
+                    if (widget.usageInstruction != null &&
+                        widget.usageInstruction!.trim().isNotEmpty)
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -292,7 +336,7 @@ class ReminderReviewScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
-                          usageInstruction!,
+                          widget.usageInstruction!,
                           textAlign: TextAlign.right,
                           style: const TextStyle(
                             fontFamily: 'Tajawal',
@@ -308,21 +352,34 @@ class ReminderReviewScreen extends StatelessWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _checkInteractionThenContinue(context),
+                  onPressed: _isSaving
+                      ? null
+                      : () => _checkInteractionThenContinue(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF16B6C8),
+                    disabledBackgroundColor: const Color(0xFF16B6C8),
                     foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: const Text(
-                    'حفظ',
-                    style: TextStyle(
-                      fontFamily: 'Tajawal',
-                    ),
-                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'حفظ',
+                          style: TextStyle(
+                            fontFamily: 'Tajawal',
+                          ),
+                        ),
                 ),
               ),
             ),
