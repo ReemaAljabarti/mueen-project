@@ -445,6 +445,7 @@ def update_elder_medication(
 
     if updated_count > 0:
         today = datetime.now().strftime("%Y-%m-%d")
+
         first_time = normalize_time_for_db(first_reminder_time)
 
         # 2) Get elder_id and times_per_day for this medication
@@ -786,20 +787,30 @@ def get_today_doses_for_elder(elder_id: int):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+#============================================================================================
 def generate_today_doses(elder_id: int):
     """
-    Generate today's medication dose records from elder_medications.
+    Generate today's actual dose records for a specific elder.
 
-    elder_medications = the original medication plan.
-    medication_doses = today's actual dose instances.
+    The function reads the elder's medication schedule from elder_medications,
+    including first_reminder_time, times_per_day, and days_pattern.
+    It normalizes the first reminder time, calculates all dose times for today,
+    and inserts the generated dose records into medication_doses.
 
-    This function is safe to call multiple times because it prevents duplicates.
-    If times_per_day is more than 1, it creates multiple doses for the same day.
+    These generated records are later used to display today's doses
+    and detect due doses for dose alerts.
     """
+
+    # Import datetime inside the function to get the current date and weekday.
     from datetime import datetime
 
+    # Get today's date in YYYY-MM-DD format.
+    # This value will be stored in medication_doses.dose_date.
     today = datetime.now().strftime("%Y-%m-%d")
 
+    # Map Python weekday numbers to the same text format used in days_pattern.
+    # Python weekday(): Monday = 0, Sunday = 6.
     # Match the format used in days_pattern, such as: sun,tue
     weekday_map = {
         0: "mon",
@@ -810,11 +821,17 @@ def generate_today_doses(elder_id: int):
         5: "sat",
         6: "sun",
     }
+    # Get today's day name, such as "mon", "tue", or "sun".
+    # This is used to check if a medication is scheduled for today.
     today_day = weekday_map[datetime.now().weekday()]
 
+    # Open a connection to the database.
     conn = get_connection()
+    # Create a cursor to execute SQL queries.
     cursor = conn.cursor()
 
+    # Select all medication schedules for the given elder.
+    # These records come from elder_medications, which stores the medication plan.
     cursor.execute("""
         SELECT
             id,
@@ -826,13 +843,25 @@ def generate_today_doses(elder_id: int):
         WHERE elder_id = ?
     """, (elder_id,))
 
+    # Fetch all medication schedule rows for this elder.
     medications = cursor.fetchall()
+    # Count how many new dose records are created.
     created_count = 0
+     # Count how many medications or dose records are skipped.
     skipped_count = 0
 
+ # Loop through each medication schedule for this elder.
+
+        # Get the elder_medications row id.
+        # This links each generated dose back to its medication schedule.
     for med in medications:
         elder_medication_id = med["id"]
+
+        # Clean the days_pattern value.
+        # Example: " Daily " becomes "daily".
         days_pattern = (med["days_pattern"] or "").strip().lower()
+         # Get how many times this medication should be taken per day.
+        # If the value is missing, default to 1.
         times_per_day = med["times_per_day"] or 1
 
         # Only generate doses if the medication is scheduled for today.
@@ -843,19 +872,29 @@ def generate_today_doses(elder_id: int):
                 if day.strip()
             ]
 
+            # If today is not included in the medication schedule, skip it.
+
             if today_day not in scheduled_days:
                 skipped_count += 1
                 continue
-
+# Normalize the first reminder time into HH:MM format.
+        # Example: "9:00 ص" becomes "09:00".
         first_time = normalize_time_for_db(med["first_reminder_time"])
+        # If the reminder time is invalid or missing, skip this medication.
 
         if not first_time:
             skipped_count += 1
             continue
 
+        # Generate all dose times for today based on the first time
+        # and the number of doses per day.
+        # Example: first_time="09:00", times_per_day=2 -> ["09:00", "21:00"].
         dose_times = generate_dose_times_for_day(first_time, times_per_day)
+        # Loop through each generated dose time.
 
         for scheduled_time in dose_times:
+            # Check if this exact dose already exists for today.
+            # This prevents duplicate dose records if the function runs more than once.
             cursor.execute("""
                 SELECT id
                 FROM medication_doses
@@ -870,13 +909,15 @@ def generate_today_doses(elder_id: int):
                 scheduled_time,
                 today,
             ))
+            # Fetch one existing dose record if it exists.
 
             existing = cursor.fetchone()
 
             if existing:
                 skipped_count += 1
                 continue
-
+ # Insert a new dose record into medication_doses.
+            # New doses start with status "pending" and snooze_count 0.
             cursor.execute("""
                 INSERT INTO medication_doses (
                     elder_medication_id,
@@ -895,12 +936,15 @@ def generate_today_doses(elder_id: int):
                 scheduled_time,
                 today,
             ))
+            # Increase the count of newly created dose records.
 
             created_count += 1
+    # Save all inserted dose records to the database.
 
     conn.commit()
+    # Close the database connection.
     conn.close()
-
+    # Return a summary of what happened.
     return {
         "elder_id": elder_id,
         "dose_date": today,
@@ -909,6 +953,12 @@ def generate_today_doses(elder_id: int):
         "total_checked": len(medications),
     }
 
+
+
+
+# This function calculates the scheduled dose times for a
+#  day based on the first reminder time and the number of doses per day.
+# ريما
 def generate_dose_times_for_day(first_time: str, times_per_day: int):
     """
     Generate dose times in HH:MM format based on:
@@ -939,6 +989,12 @@ def generate_dose_times_for_day(first_time: str, times_per_day: int):
 
     return dose_times
 
+#normalize_time_for_db() is a small helper function, but it is important because dose scheduling depends on consistent time format.
+# The caregiver selects the first reminder time in a 12-hour Arabic format from Flutter.
+# This value is stored in elder_medications.
+# When today's doses are generated, the backend uses normalize_time_for_db()
+# to convert it into a consistent 24-hour format before saving the actual dose records
+# in medication_doses.
 def normalize_time_for_db(time_value: str | None):
     """
     Convert different time formats to HH:MM.
@@ -949,30 +1005,58 @@ def normalize_time_for_db(time_value: str | None):
     - 2:30 م
     - 8:00 ص
     """
+    # If the value is empty or None, return None
     if not time_value:
         return None
-
+    
+    # Convert the input to string and remove extra spaces
     value = str(time_value).strip()
 
+    # Import regex to search for time patterns
     import re
 
+    # Check if the time is written in Arabic AM/PM format
+    # Examples: 8:00 ص , 2:30 م
     arabic_match = re.search(r"(\d{1,2}):(\d{2})\s*([صم])", value)
+
+    # If Arabic time format is found
     if arabic_match:
+
+    # Extract the hour part
         hour = int(arabic_match.group(1))
+
+    # Extract the minute part
         minute = int(arabic_match.group(2))
+
+    # Extract the period: ص or م
         period = arabic_match.group(3)
 
+        # If the period is PM and the hour is not 12,
+        # convert it to 24-hour format
+        # Example: 2:30 م becomes 14:30
         if period == "م" and hour != 12:
             hour += 12
+
+        # If the period is AM and the hour is 12,
+        # convert midnight to 00
+        # Example: 12:00 ص becomes 00:00
         if period == "ص" and hour == 12:
             hour = 0
 
+        # Return the time in HH:MM format
         return f"{hour:02d}:{minute:02d}"
-
+    
+    # Check if the time is already in normal format
+    # Examples: 14:30 or 14:30:00
     iso_match = re.search(r"^(\d{1,2}):(\d{2})", value)
     if iso_match:
+
+    # Extract the hour part
         hour = int(iso_match.group(1))
+    # Extract the minute part    
         minute = int(iso_match.group(2))
+    # If the input does not match any supported time format,
+    # return None
         return f"{hour:02d}:{minute:02d}"
 
     return None
@@ -981,9 +1065,9 @@ def normalize_time_for_db(time_value: str | None):
 
 def get_today_doses_for_elder(elder_id: int):
         """Return all dose records for today, not only due-now doses."""
-        from datetime import datetime
+        from datetime import datetime # Import datetime to get the current date
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")# Get today's date in YYYY-MM-DD format to match the dose_date field
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -1078,17 +1162,36 @@ def get_next_dose_for_elder(elder_id: int):
 
 
 def get_due_doses_for_elder(elder_id: int):
-    """Return doses that are due now and auto-mark expired doses as missed."""
+    """Return doses that are due now and auto-mark expired doses as missed.
+    
+    This function is used by the dose alert service.
+    It checks medication_doses and returns only doses that should trigger
+    the full-screen dose alert now.
+    It also checks for any doses that have expired (pending or snoozed doses that are past their scheduled or snoozed time) 
+    and auto-marks them as missed.
+    
+    """
+    # Import datetime to work with current date and time.
     from datetime import datetime, timedelta
-
+# Open a connection to the database.
     conn = get_connection()
+      # Create a cursor to execute SQL commands.
     cursor = conn.cursor()
-
+    # Get the current date and time.
     now = datetime.now()
+    # Format today's date as YYYY-MM-DD.
+    # This is used to check only today's dose records.
     today = now.strftime("%Y-%m-%d")
+     # Format the current time as HH:MM.
+    # This is used to compare with scheduled_time and snoozed_until.
     now_str = now.strftime("%H:%M")
-    ten_mins_ago_str = (now - timedelta(minutes=10)).strftime("%H:%M")
 
+       # Calculate the start of the response window.
+    # Doses older than this window are considered expired.
+    ten_mins_ago_str = (now - timedelta(minutes=10)).strftime("%H:%M")
+ # Find expired doses.
+    # A pending dose is expired if its scheduled_time is older than 10 minutes ago.
+    # A snoozed dose is expired if its snoozed_until time is older than 10 minutes ago.
     cursor.execute("""
         SELECT
             md.id,
@@ -1108,10 +1211,13 @@ def get_due_doses_for_elder(elder_id: int):
               (md.status = 'snoozed' AND md.snoozed_until IS NOT NULL AND md.snoozed_until < ?)
           )
     """, (elder_id, today, ten_mins_ago_str, ten_mins_ago_str))
+    # Get all expired dose rows.
 
     expired_doses = cursor.fetchall()
-
+  # Loop through each expired dose and mark it as missed.
     for dose in expired_doses:
+                # Update the expired dose status to missed.
+
         cursor.execute("""
             UPDATE medication_doses
             SET
@@ -1121,8 +1227,11 @@ def get_due_doses_for_elder(elder_id: int):
             WHERE id = ?
               AND status IN ('pending', 'snoozed')
         """, (dose["id"],))
+        # If a row was actually updated, add logs and caregiver alert.
 
         if cursor.rowcount > 0:
+                        # Insert an adherence log to record that the dose was auto-marked as missed.
+
             cursor.execute("""
                 INSERT INTO adherence_logs (
                     dose_id,
@@ -1141,6 +1250,7 @@ def get_due_doses_for_elder(elder_id: int):
                 dose["elder_medication_id"],
                 "Auto marked as missed after no response window.",
             ))
+            # If the elder has a caregiver, create an alert for the caregiver.
 
             if dose["caregiver_id"]:
                 cursor.execute("""
@@ -1159,9 +1269,11 @@ def get_due_doses_for_elder(elder_id: int):
                     dose["id"],
                     "كبير السن لم يتناول الجرعة بعد انتهاء مهلة الاستجابة",
                 ))
+    # Save the updates, logs, and caregiver alerts.
 
     conn.commit()
-
+ # Find doses that are due now.
+    # These are the doses that should open the full-screen dose alert.
     cursor.execute("""
         SELECT
             md.id,
@@ -1216,9 +1328,14 @@ def get_due_doses_for_elder(elder_id: int):
         now_str,
         ten_mins_ago_str,
     ))
+    # Get all due dose rows.
 
     results = cursor.fetchall()
+        # Close the database connection.
+
     conn.close()
+        # Return the due doses to the API.
+
     return results
 
 

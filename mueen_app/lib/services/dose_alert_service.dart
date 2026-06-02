@@ -26,7 +26,8 @@ import '../services/current_elder.dart';
 class DoseAlertService {
   // ─── الثوابت ──────────────────────────────────────────────────────────────
   static const Duration _pollInterval = Duration(seconds: 30);
-  // مفتاح لتخزين آخر جرعات تم توليد تنبيه لها في SharedPreferences (لمنع التكرار عبر جلسات التطبيق)
+// Stores the last generated dose key in memory to avoid repeated generation
+// during the current app session.
   static String? _lastGeneratedDosesKey;
 
   // ─── الحالة الداخلية ──────────────────────────────────────────────────────
@@ -47,8 +48,6 @@ class DoseAlertService {
     _navigatorKey = key;
   }
 
-  /// يبدأ التحقق الدوري باستخدام navigatorKey المُسجَّل مسبقاً.
-  /// يجب استدعاؤه بعد تسجيل دخول كبير السن ناجح.
   static void start(GlobalKey<NavigatorState> navigatorKey) {
     _navigatorKey = navigatorKey;
     _startPolling();
@@ -75,10 +74,8 @@ class DoseAlertService {
   static void _startPolling() {
     _timer?.cancel();
 
-    // تحقق فوري عند البدء
     _checkNow();
 
-    // ثم كل 30 ثانية
     _timer = Timer.periodic(_pollInterval, (_) => _checkNow());
     debugPrint(
         '[DoseAlertService] Started — polling every ${_pollInterval.inSeconds}s');
@@ -95,31 +92,31 @@ class DoseAlertService {
         routeName == '/voice-assistant';
   }
 
+//======================================
+
+// Public wrapper for unit testing the private route-checking logic.
+  static bool isElderAreaRouteForTest(String? routeName) {
+    return _isElderAreaRoute(routeName);
+  }
+
 //=====================================
   static Future<void> _checkNow() async {
-    // لا تتحقق إذا لم يكن هناك كبير سن مسجّل
     final elder = currentElder;
     if (elder == null || elder.id == null) {
       debugPrint('[DoseAlertService] No logged-in elder — skipping check');
       return;
     }
 
-    // لا تفتح شاشة جديدة إذا كانت مفتوحة بالفعل
     if (isDoseAlertOpen) {
       debugPrint('[DoseAlertService] Alert screen already open — skipping');
       return;
     }
 
-    // نحاول معرفة الصفحة الحالية.
-    // ملاحظة: أحيانًا ModalRoute يرجع null حتى لو المستخدم داخل شاشة كبير السن،
-    // لذلك لا نمنع التنبيه إذا كان routeName = null.
     final navigator = _navigatorKey?.currentState;
     final currentRouteName = navigator == null
         ? null
         : ModalRoute.of(navigator.context)?.settings.name;
 
-    // إذا عرفنا اسم الصفحة وكانت ليست من شاشات كبير السن، نمنع التنبيه.
-    // إذا كان الاسم null، نكمل اعتمادًا على currentElder لأن كبير السن مسجل فعليًا.
     if (currentRouteName != null && !_isElderAreaRoute(currentRouteName)) {
       debugPrint(
         '[DoseAlertService] Current route is not elder area ($currentRouteName) — skipping check',
@@ -147,7 +144,6 @@ class DoseAlertService {
         _openAlertScreen(elder, doses);
       }
     } catch (e) {
-      // خطأ في الشبكة — غير قاطع، سيُعاد المحاولة في الدورة القادمة
       debugPrint('[DoseAlertService] API error (non-fatal): $e');
     }
   }
@@ -189,6 +185,13 @@ class DoseAlertService {
     return '$elderId-$date';
   }
 
+//========================================
+// Public wrapper for unit testing the private today dose key logic.
+  static String todayDoseKeyForTest(int elderId) {
+    return _todayDoseKey(elderId);
+  }
+
+//=========================
   static Future<void> _ensureTodayDosesGenerated(int elderId) async {
     final key = _todayDoseKey(elderId);
 

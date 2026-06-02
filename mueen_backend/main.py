@@ -497,6 +497,8 @@ def get_next_dose_api(elder_id: int):
             "gtin": d["gtin"],
         },
     }
+
+
 @app.post("/reminders/create-dose")
 def create_dose_api(data: DoseCreateRequest):
     """Create a pending dose record (called when elder opens the app or on schedule)."""
