@@ -17,7 +17,7 @@ from app.services.db_nlu_integration_service import (
   
 router = APIRouter(prefix="/db-nlu", tags=["DB + NLU Integration"])
 
-   
+
 # Formatter instance used to build spoken_text.
 formatter = AssistantResponseFormatter()
 

@@ -48,7 +48,6 @@ def load_intent_definitions() -> List[IntentDefinition]:
     # Read YAML content safely
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
     intents_data = data.get("intents", []) or []
-
     definitions: List[IntentDefinition] = []
 
     # Parse each intent block from the YAML file
@@ -86,7 +85,6 @@ def load_intent_definitions() -> List[IntentDefinition]:
                 notes=notes,
             )
         )
-
     return definitions
 
 

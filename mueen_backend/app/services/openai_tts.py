@@ -39,7 +39,7 @@ def synthesize_speech(text: str) -> bytes:
     # reject empty or whitespace-only input before sending a provider request
     if not text or not str(text).strip():
         raise ApiError(
-            status_code=400,
+            status_code=400, 
             code="TTS_EMPTY_INPUT",
             message="TTS input text is empty.",
             details={},
@@ -81,7 +81,7 @@ def synthesize_speech(text: str) -> bytes:
             )
 
         return audio_bytes
-
+    
     # Re-raise already normalized API errors
     except ApiError:
         raise

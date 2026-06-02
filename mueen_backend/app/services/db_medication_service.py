@@ -142,7 +142,6 @@ def _build_schedule_response(
         candidates=[],
     )
 
-#=========================================================================================
 # Build an Arabic adherence summary message.
 def _build_adherence_summary_message(summary: dict) -> str:
     total = summary.get("total", 0)
@@ -159,7 +158,7 @@ def _build_adherence_summary_message(summary: dict) -> str:
         f"المأخوذة {taken}، الفائتة {missed}، "
         f"المؤجلة {snoozed}، والمتبقية {pending}."
     )
-#=========================================================================================
+
 
 # Get a readable medication name from a dose record.
 def _get_dose_brand_name(dose: dict) -> str:

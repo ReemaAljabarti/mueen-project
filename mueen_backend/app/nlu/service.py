@@ -129,18 +129,18 @@ def _validate_slots(slots: object) -> tuple[Dict[str, Any], List[str]]:
 
 
 def parse_text(req: NluParseRequest) -> NluParseResponse:
-   # print("### NEW NLU SERVICE VERSION LOADED ###")
-    
-    """
-    Main NLU parsing entry point.
 
-    Flow:
-    1) Read raw text
-    2) Normalize Arabic text
-    3) Extract keywords
-    4) Parse intent with OpenAI
-    5) Validate the result
-    6) Return Unknown if no reliable intent is found
+    """
+     Converts the user's Arabic text into a structured result:
+    intent, confidence, slots, keywords, and issues.
+    The function normalizes the text, extracts simple keywords for tracing,
+    calls the OpenAI-based intent detector to identify the user's intent,
+    validates the returned intent and slots, then returns either a valid
+    NLU result or Unknown when the result is not reliable.
+   
+    Special case:
+    If the intent is SnoozeMedication but SNOOZE_MINUTES is missing,
+    the function returns a pending question asking for the snooze duration. 
     """
 
     # Read raw input text safely

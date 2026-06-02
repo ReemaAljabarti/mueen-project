@@ -650,6 +650,7 @@ def retrieve_from_nlu_output(
     if normalized_intent in action_handlers:
         return action_handlers[normalized_intent]()
 
+
     # Medication usage intent uses elder-specific names first, then catalog fallback
     if normalized_intent != "AskMedicationUsage":
         return _build_unsupported_intent_response(normalized_intent)

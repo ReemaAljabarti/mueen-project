@@ -21,7 +21,7 @@ from app.tts_schemas import (
     AssistantTextToSpeechRequest,
     AssistantTextToSpeechResponse,
 )
-
+ 
 logger = logging.getLogger("assistant")
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
@@ -63,12 +63,17 @@ def _get_elder_id_from_request(req: AssistantTextToSpeechRequest) -> int:
 def _build_assistant_response_from_text(
     clean_text: str,
     elder_id: int,
+    include_audio: bool = True,
 ) -> AssistantTextToSpeechResponse:
     if not clean_text:
         spoken_text = "ما وصلني طلب واضح."
 
-        audio_bytes = synthesize_speech(spoken_text)
-        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+        audio_format = settings.OPENAI_TTS_FORMAT if include_audio else ""
+        audio_base64 = ""
+
+        if include_audio:
+            audio_bytes = synthesize_speech(spoken_text)
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
         return AssistantTextToSpeechResponse(
             input_text=clean_text,
@@ -76,7 +81,7 @@ def _build_assistant_response_from_text(
             response_mode=None,
             db_response=None,
             spoken_text=spoken_text,
-            audio_format=settings.OPENAI_TTS_FORMAT,
+            audio_format=audio_format,
             audio_base64=audio_base64,
         )
 
@@ -109,8 +114,12 @@ def _build_assistant_response_from_text(
         response_text=spoken_text,
     )
 
-    audio_bytes = synthesize_speech(spoken_text)
-    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+    audio_format = settings.OPENAI_TTS_FORMAT if include_audio else ""
+    audio_base64 = ""
+
+    if include_audio:
+        audio_bytes = synthesize_speech(spoken_text)
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
     return AssistantTextToSpeechResponse(
         input_text=clean_text,
@@ -118,7 +127,7 @@ def _build_assistant_response_from_text(
         response_mode=response_mode,
         db_response=db_response,
         spoken_text=spoken_text,
-        audio_format=settings.OPENAI_TTS_FORMAT,
+        audio_format=audio_format,
         audio_base64=audio_base64,
     )
 
@@ -133,6 +142,19 @@ def respond_with_text_and_tts(
     return _build_assistant_response_from_text(
         clean_text=clean_text,
         elder_id=elder_id,
+    )
+
+@router.post("/respond-text-no-audio", response_model=AssistantTextToSpeechResponse)
+def respond_with_text_no_audio(
+    req: AssistantTextToSpeechRequest,
+) -> AssistantTextToSpeechResponse:
+    clean_text = req.text.strip()
+    elder_id = _get_elder_id_from_request(req)
+
+    return _build_assistant_response_from_text(
+        clean_text=clean_text,
+        elder_id=elder_id,
+        include_audio=False,
     )
 
 

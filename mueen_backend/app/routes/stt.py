@@ -27,7 +27,7 @@ async def transcribe(file: UploadFile = File(...)):
 
     ext = _get_extension(file.filename)
 
-    # 1) تحقق من الامتداد
+    # 1) Check the extension
     if ext == "":
         raise ApiError(
             status_code=400,
@@ -44,11 +44,11 @@ async def transcribe(file: UploadFile = File(...)):
             details={"received_extension": ext},
         )
 
-    # 2) قراءة الملف
+    # 2) Read the file
     data = await file.read()
     size = len(data)
 
-    # 3) تحقق من الحجم
+    # 3) Check the size
     if size < settings.MIN_UPLOAD_BYTES:
         raise ApiError(
             status_code=400,
@@ -65,7 +65,7 @@ async def transcribe(file: UploadFile = File(...)):
             details={"bytes": size},
         )
 
-    # 4) حفظ مؤقت
+    # 4) Save temporary 
     temp_name = f"{uuid.uuid4().hex}.{ext}"
     temp_path = TMP_DIR / temp_name
 
@@ -80,11 +80,11 @@ async def transcribe(file: UploadFile = File(...)):
             details={"stage": "temp_save"},
         )
 
-    # 5) STT الحقيقي
+    # 5) STT 
     try:
         text = transcribe_file(temp_path)
     finally:
-        # تنظيف الملف المؤقت
+        # Clean the temp file
         try:
             if temp_path.exists():
                 temp_path.unlink()

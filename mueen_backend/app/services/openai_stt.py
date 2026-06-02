@@ -44,12 +44,15 @@ def transcribe_file(file_path: Path) -> str:
 
             )
 
-        # استخراج النص بطريقة متوافقة مع أكثر من شكل استجابة
+        # Get the transcription text from the STT response.
+        # The response can be an object with a text
+        # attribute or a dictionary with a "text" key.
+
         text = getattr(result, "text", None)
         if not text and isinstance(result, dict):
             text = result.get("text")
 
-        # Empty transcription (مطلوب في Task 5)
+        # Empty transcription 
         if not text or not str(text).strip():
             raise ApiError(
                 status_code=502,
@@ -63,7 +66,7 @@ def transcribe_file(file_path: Path) -> str:
     except ApiError:
         raise
 
-    # Error Mapping مفصل
+    # Error Mapping
     except AuthenticationError as e:
         logger.warning("OpenAI auth error: %s", str(e)[:200])
         raise ApiError(
